@@ -1,0 +1,20 @@
+[project]
+name = "talktodata"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.115.12",
+    "langchain>=0.3.25",
+    "langchain-community>=0.3.24",
+    "langchain-openai>=0.3.18",
+    "langgraph>=0.4.7",
+    "openai>=1.82.1",
+    "pandas>=2.2.3",
+    "python-dotenv>=1.1.0",
+    "replicate>=1.0.7",
+    "sqlalchemy>=2.0.41",
+    "streamlit>=1.45.1",
+    "uvicorn>=0.34.2",
+]

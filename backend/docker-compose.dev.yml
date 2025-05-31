@@ -1,0 +1,134 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database for development
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: talktodb_dev
+      POSTGRES_USER: dev_user
+      POSTGRES_PASSWORD: dev_password
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+
+  # Redis for development
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  # TalkToData API in development mode
+  api:
+    build:
+      context: .
+      target: development
+    environment:
+      # Database
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: talktodb_dev
+      DATABASE_USER: dev_user
+      DATABASE_PASSWORD: dev_password
+      
+      # Cache
+      REDIS_URL: redis://redis:6379/0
+      
+      # Celery
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      
+      # Security
+      SECRET_KEY: dev-secret-key-not-for-production
+      
+      # API
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      API_DEBUG: "true"
+      
+      # LLM
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+      - /app/__pycache__
+    depends_on:
+      - postgres
+      - redis
+    command: ["uvicorn", "enterprise_app:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+  # Celery Worker for development
+  worker:
+    build:
+      context: .
+      target: development
+    environment:
+      # Database
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: talktodb_dev
+      DATABASE_USER: dev_user
+      DATABASE_PASSWORD: dev_password
+      
+      # Cache
+      REDIS_URL: redis://redis:6379/0
+      
+      # Celery
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+      
+      # LLM
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      
+    volumes:
+      - .:/app
+      - /app/__pycache__
+    depends_on:
+      - postgres
+      - redis
+    command: ["celery", "-A", "core.tasks.celery_app", "worker", "--loglevel=debug", "--concurrency=1"]
+
+  # Flower for monitoring Celery
+  flower:
+    build:
+      context: .
+      target: development
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+    ports:
+      - "5555:5555"
+    volumes:
+      - .:/app
+    depends_on:
+      - redis
+    command: ["celery", "-A", "core.tasks.celery_app", "flower", "--host=0.0.0.0", "--port=5555"]
+
+  # pgAdmin for database management
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@talktodb.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+
+  # Redis Commander for Redis management
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    environment:
+      REDIS_HOSTS: local:redis:6379
+    ports:
+      - "8081:8081"
+    depends_on:
+      - redis
+
+volumes:
+  postgres_dev_data:
+  pgadmin_data:

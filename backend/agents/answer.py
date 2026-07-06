@@ -1,5 +1,5 @@
 # agents/answer.py
-from llm.gemini import format_answer
+from llm.service import format_answer
 from typing import Dict, Any, List, Optional
 
 

@@ -1,5 +1,5 @@
 # agents/sql_writer.py
-from llm.gemini import generate_sql_or_response_with_gemini
+from llm.service import generate_sql_or_response
 from typing import Dict, Any
 
 
@@ -34,7 +34,7 @@ class SQLWriterAgent:
 
         # Call the LLM function, passing the dialect
         print(f"[SQLWriterAgent] Calling LLM for {db_dialect}...")
-        llm_result = generate_sql_or_response_with_gemini(
+        llm_result = generate_sql_or_response(
             schema=schema_description, question=question, db_dialect=db_dialect
         )
 

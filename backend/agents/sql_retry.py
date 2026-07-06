@@ -1,5 +1,5 @@
 # agents/sql_retry.py
-from llm.gemini import generate_sql_or_response_with_gemini
+from llm.service import generate_sql_or_response
 from typing import Dict, Any
 
 
@@ -42,7 +42,7 @@ class SQLRetryAgent:
         print(f"[SQLRetryAgent] Previous SQL failed: {previous_sql}")
         
         # Call the LLM function with enhanced context
-        llm_result = generate_sql_or_response_with_gemini(
+        llm_result = generate_sql_or_response(
             schema=enhanced_schema, question=question, db_dialect=db_dialect
         )
         
@@ -108,13 +108,11 @@ class SQLRetryAgent:
         failure_analysis += "5. If the question asks for specific entities, first query to see what entities exist\n"
         failure_analysis += "6. Consider using LIKE with wildcards instead of exact matches\n"
         failure_analysis += "7. Try removing JOIN conditions if they might be too restrictive\n"
-        failure_analysis += "8. Generate multiple queries to explore available data first\n"
         failure_analysis += "\nSUGGESTED ALTERNATIVE APPROACHES:\n"
         
         if "department" in question.lower():
             failure_analysis += "- First query available departments: SELECT name FROM departments;\n"
             failure_analysis += "- Then show all appointments: SELECT * FROM appointments LIMIT 10;\n"
-            failure_analysis += "- Or combine: SELECT name FROM departments; SELECT * FROM appointments LIMIT 10;\n"
         
         if "patient" in question.lower() and ("name" in question.lower() or "'" in question):
             failure_analysis += "- First show available patient names: SELECT name FROM patients;\n"

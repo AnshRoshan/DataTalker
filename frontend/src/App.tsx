@@ -9,7 +9,7 @@ import InputArea from './components/InputArea';
 const App: React.FC = () => {
   const [chatHistory, setChatHistory] = useState<ChatMessageData[]>([]);
   const [inputMethod, setInputMethod] = useState<InputMethod>("upload");
-  const [dbFile, setDbFile] = useState<File | null>(null);
+  const [dbPath, setDbPath] = useState<string>("");
   const [dbUrl, setDbUrl] = useState<string>("");
   const [userInput, setUserInput] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -35,12 +35,30 @@ const App: React.FC = () => {
     return () => mediaQuery.removeEventListener('change', handleMediaQueryChange);
   }, []);
 
+  const isAbsolutePath = (path: string): boolean => {
+    // Check for Windows absolute paths (C:\, D:\, etc.)
+    if (/^[A-Za-z]:\\/.test(path)) return true;
+    // Check for Unix/Linux absolute paths (starting with /)
+    if (path.startsWith('/')) return true;
+    // Check for UNC paths (\\server\share)
+    if (path.startsWith('\\\\')) return true;
+    return false;
+  };
+
+  const isPostgresUrl = (url: string): boolean => {
+    return url.startsWith('postgresql://') || url.startsWith('postgres://');
+  };
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!userInput.trim()) return;
 
-    if (inputMethod === 'upload' && !dbFile) {
-      setError("Please upload a database file first.");
+    if (inputMethod === 'upload' && !dbPath.trim()) {
+      setError("Please provide a local database file path first.");
+      return;
+    }
+    if (inputMethod === 'upload' && dbPath.trim() && !isAbsolutePath(dbPath)) {
+      setError("Database path must be absolute (e.g., C:\\path\\to\\file.db or /path/to/file.db).");
       return;
     }
     if (inputMethod === 'url' && !dbUrl.trim()) {
@@ -67,10 +85,14 @@ const App: React.FC = () => {
       const formData = new FormData();
       formData.append("question", newChat.question);
 
-      if (inputMethod === "upload" && dbFile) {
-        formData.append("db_file", dbFile);
+      if (inputMethod === "upload" && dbPath) {
+        formData.append("db_path", dbPath);
       } else if (inputMethod === "url" && dbUrl) {
-        formData.append("db_url", dbUrl);
+        if (isPostgresUrl(dbUrl)) {
+          formData.append("db_connection_string", dbUrl);
+        } else {
+          formData.append("db_url", dbUrl);
+        }
       }
 
       // Retrieve API key from localStorage
@@ -121,11 +143,9 @@ const App: React.FC = () => {
     }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setDbFile(e.target.files[0]);
-      setError(null);
-    }
+  const handleDbPathChange = (path: string) => {
+    setDbPath(path);
+    setError(null); // Clear error when path changes
   };
 
   const toggleSidebar = () => {
@@ -135,8 +155,12 @@ const App: React.FC = () => {
   const handleFollowUpClick = async (question: string) => {
     if (!question.trim()) return;
 
-    if (inputMethod === 'upload' && !dbFile) {
-      setError("Please upload a database file first.");
+    if (inputMethod === 'upload' && !dbPath.trim()) {
+      setError("Please provide a local database file path first.");
+      return;
+    }
+    if (inputMethod === 'upload' && dbPath.trim() && !isAbsolutePath(dbPath)) {
+      setError("Database path must be absolute (e.g., C:\\path\\to\\file.db or /path/to/file.db).");
       return;
     }
     if (inputMethod === 'url' && !dbUrl.trim()) {
@@ -162,10 +186,14 @@ const App: React.FC = () => {
       const formData = new FormData();
       formData.append("question", newChat.question);
 
-      if (inputMethod === "upload" && dbFile) {
-        formData.append("db_file", dbFile);
+      if (inputMethod === "upload" && dbPath) {
+        formData.append("db_path", dbPath);
       } else if (inputMethod === "url" && dbUrl) {
-        formData.append("db_url", dbUrl);
+        if (isPostgresUrl(dbUrl)) {
+          formData.append("db_connection_string", dbUrl);
+        } else {
+          formData.append("db_url", dbUrl);
+        }
       }
 
       // Retrieve API key from localStorage
@@ -223,8 +251,8 @@ const App: React.FC = () => {
         toggleSidebar={toggleSidebar}
         inputMethod={inputMethod}
         setInputMethod={setInputMethod}
-        dbFile={dbFile}
-        handleFileChange={handleFileChange}
+        dbPath={dbPath}
+        handleDbPathChange={handleDbPathChange}
         dbUrl={dbUrl}
         setDbUrl={setDbUrl}
       />

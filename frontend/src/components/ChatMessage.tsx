@@ -212,7 +212,6 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isUser, onFollowUpCl
                 ) : (
                     <>
                         <div className="mt-2">
-                            <p className="font-medium text-gray-800">Answer:</p>
                             <div className="text-gray-700 space-y-2">
                                 {(() => {
                                     const lines = message.answer.split('\n');

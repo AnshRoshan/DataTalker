@@ -6,8 +6,8 @@ interface SidebarProps {
     toggleSidebar: () => void;
     inputMethod: InputMethod;
     setInputMethod: (method: InputMethod) => void;
-    dbFile: File | null;
-    handleFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+    dbPath: string;
+    handleDbPathChange: (path: string) => void;
     dbUrl: string;
     setDbUrl: (url: string) => void;
 }
@@ -17,11 +17,38 @@ const Sidebar: React.FC<SidebarProps> = ({
     toggleSidebar,
     inputMethod,
     setInputMethod,
-    dbFile,
-    handleFileChange,
+    dbPath,
+    handleDbPathChange,
     dbUrl,
     setDbUrl,
 }) => {
+    const isAbsolutePath = (path: string): boolean => {
+        // Check for Windows absolute paths (C:\, D:\, etc.)
+        if (/^[A-Za-z]:\\/.test(path)) return true;
+        // Check for Unix/Linux absolute paths (starting with /)
+        if (path.startsWith('/')) return true;
+        // Check for UNC paths (\\server\share)
+        if (path.startsWith('\\\\')) return true;
+        return false;
+    };
+
+    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            const file = e.target.files[0];
+            const fileName = file.name;
+            
+            // Since browsers can't provide the full path for security reasons,
+            // we'll show the filename and prompt the user to provide the full absolute path
+            alert(`File selected: ${fileName}\n\nDue to browser security restrictions, please manually enter the complete absolute path to this file in the input field.\n\nExample formats:\n- Windows: C:\\path\\to\\${fileName}\n- Linux/Mac: /path/to/${fileName}`);
+            
+            // Clear the file input to allow selecting the same file again
+            e.target.value = '';
+        }
+    };
+
+    const handlePathChange = (path: string) => {
+        handleDbPathChange(path);
+    };
     return (
         <>
             {/* Backdrop for mobile */}
@@ -73,8 +100,8 @@ const Sidebar: React.FC<SidebarProps> = ({
                                 }
                             `}
                         >
-                            <i className="fas fa-upload mr-2"></i>
-                            Upload File
+                            <i className="fas fa-folder-open mr-2"></i>
+                            Local File Path
                         </button>
                         <button
                             onClick={() => setInputMethod('url')}
@@ -93,40 +120,71 @@ const Sidebar: React.FC<SidebarProps> = ({
 
                     {inputMethod === 'upload' ? (
                         <div className="space-y-3">
-                            <label className="block text-sm font-semibold text-gray-200 mb-2">
-                                Upload SQLite Database
+                            <label htmlFor="dbPathInput" className="block text-sm font-semibold text-gray-200 mb-2">
+                                Local SQLite Database Path
                             </label>
-                            <div className="flex items-center justify-center w-full">
-                                <label className="
-                                    relative flex flex-col items-center justify-center w-full h-40 
-                                    border-2 border-gray-600 border-dashed rounded-xl cursor-pointer 
-                                    bg-gray-700/30 hover:bg-gray-700/50 transition-all duration-200
-                                    group overflow-hidden
-                                ">
-                                    <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-purple-500/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                                    <div className="relative flex flex-col items-center justify-center">
-                                        <div className="p-3 bg-gray-700 rounded-full mb-3 group-hover:scale-110 transition-transform">
-                                            <i className="fas fa-cloud-upload-alt text-3xl text-blue-400"></i>
-                                        </div>
-                                        <p className="text-sm text-gray-300 text-center px-4">
-                                            {dbFile ? (
-                                                <span className="text-blue-400 font-medium">{dbFile.name}</span>
-                                            ) : (
-                                                <>
-                                                    <span className="font-medium">Click to upload</span>
-                                                    <br />
-                                                    <span className="text-xs text-gray-400">.db, .sqlite, .sqlite3</span>
-                                                </>
-                                            )}
-                                        </p>
+                            <div className="space-y-3">
+                                <div className="relative">
+                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                        <i className="fas fa-file-code text-gray-400"></i>
                                     </div>
                                     <input
-                                        type="file"
-                                        className="hidden"
-                                        accept=".db,.sqlite,.sqlite3"
-                                        onChange={handleFileChange}
+                                        id="dbPathInput"
+                                        type="text"
+                                        value={dbPath}
+                                        onChange={(e) => handlePathChange(e.target.value)}
+                                        placeholder="Enter absolute path: C:\path\to\file.db or /path/to/file.db"
+                                        className={`
+                                            w-full pl-10 pr-16 py-3 bg-gray-700/50 border rounded-xl text-white placeholder-gray-400 
+                                            focus:outline-none focus:ring-2 focus:border-transparent transition-all duration-200
+                                            ${dbPath && !isAbsolutePath(dbPath) 
+                                                ? 'border-red-500 focus:ring-red-500' 
+                                                : 'border-gray-600 focus:ring-blue-500'
+                                            }
+                                        `}
                                     />
-                                </label>
+                                    <div className="absolute inset-y-0 right-0 flex items-center pr-3">
+                                        <label className="cursor-pointer p-1 hover:bg-gray-600 rounded transition-colors">
+                                            <i className="fas fa-folder-open text-gray-400 hover:text-blue-400"></i>
+                                            <input
+                                                type="file"
+                                                className="hidden"
+                                                accept=".db,.sqlite,.sqlite3"
+                                                onChange={handleFileSelect}
+                                            />
+                                        </label>
+                                    </div>
+                                </div>
+                                <div className="flex space-x-2">
+                                    <button
+                                        onClick={() => {
+                                            const input = document.createElement('input');
+                                            input.type = 'file';
+                                            input.accept = '.db,.sqlite,.sqlite3';
+                                            input.onchange = (e) => handleFileSelect(e as any);
+                                            input.click();
+                                        }}
+                                        className="
+                                            flex-1 px-4 py-2 bg-blue-600/20 border border-blue-500/30 
+                                            rounded-lg text-blue-400 hover:bg-blue-600/30 hover:text-blue-300
+                                            transition-all duration-200 text-sm font-medium
+                                            flex items-center justify-center space-x-2
+                                        "
+                                    >
+                                        <i className="fas fa-folder-open"></i>
+                                        <span>Browse Files</span>
+                                    </button>
+                                </div>
+                                {dbPath && !isAbsolutePath(dbPath) && (
+                                    <div className="flex items-center space-x-2 text-red-400 text-xs">
+                                        <i className="fas fa-exclamation-triangle"></i>
+                                        <span>Path must be absolute (e.g., C:\path\to\file.db or /path/to/file.db)</span>
+                                    </div>
+                                )}
+                                <p className="text-xs text-gray-400">
+                                    Enter the complete absolute path to your SQLite database file (.db, .sqlite, .sqlite3). 
+                                    Click "Browse Files" to help locate the file, then manually enter its full path.
+                                </p>
                             </div>
                         </div>
                     ) : (
@@ -142,7 +200,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                                     type="text"
                                     value={dbUrl}
                                     onChange={(e) => setDbUrl(e.target.value)}
-                                    placeholder="https://example.com/database.db"
+                                    placeholder="https://example.com/database.db or postgresql://user:pass@host:port/db"
                                     className="
                                         w-full pl-10 pr-4 py-3 bg-gray-700/50 border border-gray-600 
                                         rounded-xl text-white placeholder-gray-400 
@@ -163,16 +221,17 @@ const Sidebar: React.FC<SidebarProps> = ({
                     <div className="relative">
                         <div className="absolute inset-0 bg-gradient-to-r from-blue-500/20 to-purple-500/20 rounded-xl blur"></div>
                         <div className="relative bg-gray-700/50 p-4 rounded-xl border border-gray-600">
-                            {dbFile ? (
+                            {inputMethod === 'upload' && dbPath ? (
                                 <div className="flex items-center space-x-3">
                                     <div className="p-2 bg-blue-500/20 rounded-lg">
                                         <i className="fas fa-file-alt text-blue-400"></i>
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <p className="text-sm font-medium text-white truncate" title={dbFile.name}>
-                                            {dbFile.name}
+                                        <p className="text-sm font-medium text-white truncate" title={dbPath}>
+                                            {/* Show only filename from path */}
+                                            {dbPath.split(/[\\/]/).pop() || dbPath}
                                         </p>
-                                        <p className="text-xs text-gray-400">Local file</p>
+                                        <p className="text-xs text-gray-400">Local file path</p>
                                     </div>
                                 </div>
                             ) : dbUrl ? (

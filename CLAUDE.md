@@ -10,12 +10,12 @@
 ## What this is
 
 DataTalker is a "talk to your data" app: ask a natural-language question, it reflects a
-database's schema, uses an LLM (Google Gemini) to write SQL, executes it, and returns a
+database's schema, uses an LLM (Gemini by default; any OpenAI-compatible endpoint via `LLM_*` config) to write SQL, executes it, and returns a
 plain-English answer + the SQL + the result rows. FastAPI backend + React/Vite (TypeScript)
 frontend.
 
-**Status: Phase-1 hardened prototype (merged to main).** Still single-tenant and hardwired to
-one LLM vendor + two DB dialects — not yet enterprise-*featured*, but now enterprise-*safe*.
+**Status: Phase-1 hardened prototype (merged to main).** Still single-tenant and limited to
+two DB dialects (the LLM vendor is pluggable since Phase 2A) — not yet enterprise-*featured*, but now enterprise-*safe*.
 Phase 1 added API-key auth, a read-only single-`SELECT` allowlist on a read-only engine,
 `db_path` confinement + `db_url` SSRF guard, threadpool offload, error/secret sanitization, a
 schema-cache TTL, and structured logging with correlation IDs. See `docs/CODEBASE_AUDIT.md`
@@ -28,7 +28,7 @@ code is **dead** than alive.
 
 | Stack | Entry point | Status | Touch it? |
 |---|---|---|---|
-| **① Live / modular** | `backend/main.py` → `api/` → `services/` → `graphs/` → `agents/` → `llm/gemini.py` | **This is what actually runs and serves the frontend.** | ✅ All real work happens here |
+| **① Live / modular** | `backend/main.py` → `api/` → `services/` → `graphs/` → `agents/` → `llm/` | **This is what actually runs and serves the frontend.** | ✅ All real work happens here |
 | **② "Enterprise"** | `backend/enterprise_app.py`, `enterprise_graph.py`, `enterprise_status.py`, top-level `main_graph.py`, `core/{auth,security,middleware,monitoring,tasks,task_implementations}.py` | **Dead. ~4,000 LoC. Does not even compile** (`enterprise_app.py:195` IndentationError; broken imports; deps like celery/redis/jwt not installed). Imported only by the test suite. | ❌ Delete or quarantine — do not "fix in place" |
 | **③ Legacy** | `backend/streamlit.py` (Streamlit UI), `backend/work.py` (empty, 0 bytes) | Superseded by the React frontend. | ❌ Delete or move to `legacy/` |
 
@@ -99,8 +99,9 @@ DB reference resolution priority (`api/dependencies.py`): `db_connection_string`
 
 ## Running it locally
 
-**Backend** (needs `GEMINI_API_KEY` **and now `DATATALKER_API_KEY`** in `backend/.env` — the app
-raises at import without the Gemini key and denies every data request without the API key):
+**Backend** (needs `GEMINI_API_KEY` — or `LLM_PROVIDER=openai` + `LLM_API_KEY`/`LLM_BASE_URL`/`LLM_MODEL` —
+**and `DATATALKER_API_KEY`** in `backend/.env`; missing LLM config surfaces as a clear error on the
+first LLM call, and every data request is denied without the API key):
 ```bash
 cd backend
 # backend/.env (gitignored):

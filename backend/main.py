@@ -17,11 +17,14 @@ from core.config import (
     CORS_ALLOW_METHODS,
     CORS_ALLOW_HEADERS,
 )
+from core.logging_config import configure_logging, RequestContextMiddleware
 from api.endpoints import create_endpoints
 
 
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
+
+    configure_logging()
 
     # Create FastAPI app
     app = FastAPI(
@@ -40,6 +43,8 @@ def create_app() -> FastAPI:
         allow_methods=CORS_ALLOW_METHODS,
         allow_headers=CORS_ALLOW_HEADERS,
     )
+    # Per-request correlation id + structured request logging
+    app.add_middleware(RequestContextMiddleware)
 
     # Register endpoints
     create_endpoints(app)

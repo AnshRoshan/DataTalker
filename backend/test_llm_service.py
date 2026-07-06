@@ -42,6 +42,10 @@ assert r["response"] == "I can only answer data questions."
 with_fake('```json\n{"sql": "SELECT 2"}\n```')
 assert svc.generate_sql_or_response("s", "q")["sql"] == "SELECT 2"
 
+# JSON embedded in prose -> the regex fallback extracts it (pre-refactor behavior)
+with_fake('Sure, here is the SQL: {"sql": "SELECT 5"} hope that helps!')
+assert svc.generate_sql_or_response("s", "q")["sql"] == "SELECT 5"
+
 # --- THE key behavior this refactor must not lose: parse-failure retry ---
 fake = with_fake("total garbage, not json", '{"sql": "SELECT 3"}')
 r = svc.generate_sql_or_response("s", "q")

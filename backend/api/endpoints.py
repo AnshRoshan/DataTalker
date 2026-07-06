@@ -17,8 +17,10 @@ from core.config import API_TITLE, API_VERSION
 def create_endpoints(app: FastAPI) -> None:
     """Create and register all API endpoints."""
     
+    # ponytail: sync `def` (not async) so Starlette runs the blocking schema reflection in
+    # its threadpool instead of stalling the event loop for every request (PR-02).
     @app.post("/schema/", response_model=SchemaResponse, dependencies=[Depends(require_api_key)])
-    async def extract_schema(
+    def extract_schema(
         db_file: Optional[UploadFile] = File(None),
         db_path: Optional[str] = Form(None),
         db_url: Optional[str] = Form(None),
@@ -71,8 +73,10 @@ def create_endpoints(app: FastAPI) -> None:
             if temp_file_to_cleanup and not db_file:
                 cleanup_temp_file(temp_file_to_cleanup)
 
+    # ponytail: sync `def` so the blocking SQL + LLM pipeline runs in Starlette's threadpool
+    # rather than blocking the event loop (PR-02). Handler never awaits, so this is safe.
     @app.post("/chat/", response_model=QueryResponse, dependencies=[Depends(require_api_key)])
-    async def chat_with_database(
+    def chat_with_database(
         question: str = Form(...),
         db_file: Optional[UploadFile] = File(None),
         db_path: Optional[str] = Form(None),

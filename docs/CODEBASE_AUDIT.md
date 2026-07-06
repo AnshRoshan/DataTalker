@@ -12,7 +12,9 @@ dimensions → adversarial verification of every critical/high finding against t
 > critical/high **security + production** findings are resolved — **SEC-01, SEC-02, SEC-03,
 > SEC-04, SEC-05, SEC-06, PR-01, PR-02, PR-05, PR-06, PR-10, PR-11, CORR-1, CORR-2, CORR-3**
 > (+ FE-02's data half), **ARCH-01/03/05** — each with an assert-based test in `backend/test_*.py`.
-> **Still open:** EC-01 (pluggable LLM) and the Phase-2 enterprise-fit items, PR-03 pooling,
+> **⚠️ Phase 2 status update (fixed on branch `phase2-pluggable-llm`):** **EC-01** (pluggable
+> LLM provider) is resolved — see finding below.
+> **Still open:** the rest of the Phase-2 enterprise-fit items, PR-03 pooling,
 > PR-08 readiness, PR-09 rate limiting, ARCH-06 deps, the `print()` sweep, and the frontend (FE-*).
 
 ---
@@ -63,7 +65,7 @@ and *make the real thing safe*, then grow the customization seams.
 | **SEC-02** | No auth/authz on any live endpoint | `api/endpoints.py:20` |
 | **PR-01** | Docker/compose deploy the dead enterprise app → crash-loop; no target runs the live app | `Dockerfile:44`, `docker-compose.yml` |
 | **PR-02** | `async` handlers block the event loop on sync SQL + LLM | `services/query_service.py:38` |
-| **EC-01** | LLM hardwired to Gemini; no provider/model abstraction | `llm/gemini.py:187` |
+| **EC-01** | ✅ *Fixed* — LLM hardwired to Gemini; no provider/model abstraction | `backend/llm/` |
 | **EC-04** | No multi-tenancy / per-tenant isolation; schema cache is one global | `core/cache.py` |
 | **EC-05** | No RBAC / row-level security / column masking; governance = bypassable blocklist | `agents/validator.py:7` |
 
@@ -210,6 +212,8 @@ Severity in brackets; `→` shows any severity change from adversarial verificat
   hard requirement for enterprises to allow an NL→SQL tool near their data. *Fix:* `LLMProvider`
   protocol + factory driven by config; first adapters Gemini + OpenAI-compatible (covers Azure/vLLM/
   LiteLLM/Bedrock-gateway). Consider LiteLLM.
+  ✅ **Fixed on branch `phase2-pluggable-llm`:** provider protocol + gemini/openai_compat adapters
+  + env-driven factory; `llm/gemini.py` deleted.
 - **[CRITICAL] EC-04 — No multi-tenancy / per-tenant isolation** (zero `tenant`/`org` concept; one
   global schema cache). *Fix:* tenant/principal context (from auth) threaded into services/agents;
   key cache + per-tenant config (model/prompts/allowlist/connection) by `tenant_id`.

@@ -56,7 +56,9 @@ backend/
   agents/                 ① the 7 pipeline agents (see below)
     sql_writer.py  validator.py  db_executor.py  answer.py
     schema.py  user_input.py  fallback.py  sql_retry.py
-  llm/gemini.py           ① the ONLY LLM integration — hardcoded to Gemini over HTTPS
+  llm/                    ① pluggable LLM layer (EC-01): base.py protocol, providers/
+                               (gemini, openai_compat), factory.py (env-driven), prompts.py,
+                               service.py (the 2 funcs agents call; retry loop lives here)
   core/
     config.py             ① flat hardcoded constants (CORS=['*'], etc.) — not env-driven
     database.py           ① connection-string parsing + path validation
@@ -150,9 +152,11 @@ Phase 1 fixed the critical/high security + prod items (per-finding status in
 5. ✅ **PR-05/SEC-05** — generic client errors; secrets/tracebacks to logs only; Gemini key in header.
 6. ✅ **CORR-1** — Postgres schema cache now expires via a TTL.
 7. ✅ **PR-06** — structured logging + per-request `X-Request-ID` (backbone; legacy prints remain).
+8. ✅ **EC-01** — pluggable LLM provider: `LLM_PROVIDER=gemini|openai` + `LLM_BASE_URL`
+   runs any OpenAI-compatible endpoint (OpenAI/Azure/vLLM/Ollama/LiteLLM). Gemini stays
+   the zero-config default. See `backend/llm/` + `test_llm_{service,factory,providers}.py`.
 
 **Still open (Phase 2+):**
-- **EC-01 (next up):** LLM still hardwired to Gemini — no provider abstraction. The BYO-LLM wedge.
 - **Two schema caches** (`core/cache.py` + `SchemaAgent`'s LRU/JSON) can still diverge.
 - **PR-03** no engine pooling · **PR-09** no rate limiting · the ~100 `print()` sweep · **ARCH-06** bogus deps.
 - Single-tenant; no semantic layer / RBAC / dialects beyond sqlite+postgres (Phase 2 = the PRD).
@@ -161,9 +165,9 @@ Phase 1 fixed the critical/high security + prod items (per-finding status in
 
 - **Only edit stack ①.** If you touch `enterprise_*`, `core/{auth,security,middleware,monitoring,
   tasks,task_implementations}`, or top-level `main_graph.py`, you are editing dead code.
-- The LLM is Gemini via a hand-rolled `requests` call in `llm/gemini.py` (not the google SDK).
-  Agents import `generate_sql_or_response_with_gemini` / `format_answer` directly — there is no
-  provider seam yet.
+- LLM access goes through `llm/service.py` (`generate_sql_or_response` / `format_answer`) —
+  never call a provider directly. New providers implement `llm/base.py:LLMProvider` and get
+  wired in `llm/factory.py`. Config: `LLM_PROVIDER`/`LLM_MODEL`/`LLM_API_KEY`/`LLM_BASE_URL`.
 - `core/config.py` is hardcoded constants; there is **no** pydantic Settings / env loading beyond
   `GEMINI_API_KEY`. Don't assume `.env` / compose env vars take effect — they mostly don't.
 - Two dependency manifests (`pyproject.toml` pinned, `requirements.txt` unpinned) drift. `uv` is

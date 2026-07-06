@@ -8,6 +8,13 @@ dimensions → adversarial verification of every critical/high finding against t
 > 23 severe findings were **confirmed**, 1 was **downgraded** (PR-04) as overstated. The
 > summary below reflects those verdicts.
 
+> **⚠️ Phase 1 status update (fixed on branch `phase1-harden`, merged to main):** the
+> critical/high **security + production** findings are resolved — **SEC-01, SEC-02, SEC-03,
+> SEC-04, SEC-05, SEC-06, PR-01, PR-02, PR-05, PR-06, PR-10, PR-11, CORR-1, CORR-2, CORR-3**
+> (+ FE-02's data half), **ARCH-01/03/05** — each with an assert-based test in `backend/test_*.py`.
+> **Still open:** EC-01 (pluggable LLM) and the Phase-2 enterprise-fit items, PR-03 pooling,
+> PR-08 readiness, PR-09 rate limiting, ARCH-06 deps, the `print()` sweep, and the frontend (FE-*).
+
 ---
 
 ## 1. Executive summary

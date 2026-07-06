@@ -14,10 +14,12 @@ database's schema, uses an LLM (Google Gemini) to write SQL, executes it, and re
 plain-English answer + the SQL + the result rows. FastAPI backend + React/Vite (TypeScript)
 frontend.
 
-**Status: working single-user prototype. NOT production- or enterprise-ready.** It is
-unauthenticated, synchronous, single-tenant, hardwired to one LLM vendor and two DB
-dialects, and executes LLM-authored SQL guarded only by a bypassable keyword blocklist. Do
-not expose it to untrusted input or real enterprise data as-is.
+**Status: Phase-1 hardened prototype (merged to main).** Still single-tenant and hardwired to
+one LLM vendor + two DB dialects — not yet enterprise-*featured*, but now enterprise-*safe*.
+Phase 1 added API-key auth, a read-only single-`SELECT` allowlist on a read-only engine,
+`db_path` confinement + `db_url` SSRF guard, threadpool offload, error/secret sanitization, a
+schema-cache TTL, and structured logging with correlation IDs. See `docs/CODEBASE_AUDIT.md`
+(Phase-1 status banner) for exactly what's fixed vs open.
 
 ## ⚠️ Read this first: there are THREE parallel backends. Only ONE runs.
 
@@ -95,12 +97,15 @@ DB reference resolution priority (`api/dependencies.py`): `db_connection_string`
 
 ## Running it locally
 
-**Backend** (needs a Gemini key — `llm/gemini.py` raises at import if `GEMINI_API_KEY` is unset):
+**Backend** (needs `GEMINI_API_KEY` **and now `DATATALKER_API_KEY`** in `backend/.env` — the app
+raises at import without the Gemini key and denies every data request without the API key):
 ```bash
 cd backend
-# put GEMINI_API_KEY=... in backend/.env  (already gitignored)
+# backend/.env (gitignored):
+#   GEMINI_API_KEY=...
+#   DATATALKER_API_KEY=<a long random secret>   # clients send: Authorization: Bearer <it>
+#   DATATALKER_DB_DIR=...   (optional; default backend/ — db_path is confined here)
 uv run uvicorn main:fastapi_app --reload --port 8000
-# or: uv run python main.py
 ```
 
 **Frontend:**
@@ -116,6 +121,7 @@ The frontend calls the backend at `localStorage.apiUrl` or `http://127.0.0.1:800
 path:
 ```bash
 curl -X POST http://127.0.0.1:8000/chat/ \
+  -H "Authorization: Bearer $DATATALKER_API_KEY" \
   -F "question=How many patients are there?" \
   -F "db_path=E:/GENAI-PROJECTS/DataTalker/backend/hospital.db"
 ```
@@ -130,24 +136,26 @@ Schema is reflected once by **SchemaAgent** and cached.
 
 ## Landmines — the top things that will bite you
 
-(Full list with file:line and fixes in `docs/CODEBASE_AUDIT.md`.)
+Phase 1 fixed the critical/high security + prod items (per-finding status in
+`docs/CODEBASE_AUDIT.md`). Current state:
 
-1. **SEC-01 (critical):** LLM-authored SQL is executed as raw `text()`; the only guard is a
-   keyword blocklist that misses `ATTACH`, `COPY … TO PROGRAM`, `pg_read_file` → arbitrary file
-   read / potential RCE on Postgres. The stronger `EnhancedValidatorAgent` exists but is **never
-   wired**.
-2. **SEC-02 / EC-05 (critical):** No auth on any route. The frontend sends `Authorization: Bearer`
-   but the backend ignores it. Anyone who reaches the port owns the data plane.
-3. **PR-02 (critical):** Routes are `async def` but call fully synchronous SQL + LLM work with no
-   threadpool offload → one slow request blocks the entire event loop (incl. `/health`). The
-   "1000 concurrent users" doc claim is false.
-4. **EC-01 (critical):** LLM is hardwired to Gemini (model IDs are string literals). No provider
-   abstraction — a blocker for enterprises that mandate Azure OpenAI / Bedrock / on-prem.
-5. **CORR-1 (high):** PostgreSQL schema cache **never invalidates** — a stale schema persists on
-   disk (`~/.text_to_sql_schema_cache`) forever, even across restarts.
-6. **Two schema caches** (`core/cache.py` + `SchemaAgent`'s own LRU/JSON cache) can diverge.
-7. Observability = ~100 `print()` calls, no logging, no correlation IDs. Errors (incl. full
-   tracebacks and generated SQL) are returned to the client.
+**Fixed in Phase 1** (each has an assert-based test in `backend/test_*.py`):
+1. ✅ **SEC-01** — SQL is now an allowlist: a single read-only `SELECT`/`WITH` on a read-only
+   engine (`agents/validator.py`, `agents/db_executor.py`). Multi-statement rejected.
+2. ✅ **SEC-02 / SEC-06** — API-key auth on all data routes (`DATATALKER_API_KEY`, deny-by-default)
+   + CORS locked to explicit origins.
+3. ✅ **PR-02** — `/chat/` + `/schema/` are sync `def` → run in Starlette's threadpool.
+4. ✅ **SEC-03/04, PR-11** — `db_url` SSRF-guarded; `db_path` confined to `DATATALKER_DB_DIR`;
+   size caps; unique temp files.
+5. ✅ **PR-05/SEC-05** — generic client errors; secrets/tracebacks to logs only; Gemini key in header.
+6. ✅ **CORR-1** — Postgres schema cache now expires via a TTL.
+7. ✅ **PR-06** — structured logging + per-request `X-Request-ID` (backbone; legacy prints remain).
+
+**Still open (Phase 2+):**
+- **EC-01 (next up):** LLM still hardwired to Gemini — no provider abstraction. The BYO-LLM wedge.
+- **Two schema caches** (`core/cache.py` + `SchemaAgent`'s LRU/JSON) can still diverge.
+- **PR-03** no engine pooling · **PR-09** no rate limiting · the ~100 `print()` sweep · **ARCH-06** bogus deps.
+- Single-tenant; no semantic layer / RBAC / dialects beyond sqlite+postgres (Phase 2 = the PRD).
 
 ## Conventions & gotchas when changing code
 

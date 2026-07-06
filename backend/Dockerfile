@@ -1,108 +1,26 @@
-# TalkToData Enterprise - Multi-stage Docker build
-FROM python:3.11-slim as base
+# Runs the live DataTalker API (main:fastapi_app).
+# Single worker keeps the in-process schema cache coherent; a shared cache + multiple
+# workers is a later phase (see docs/CODEBASE_AUDIT.md PR-04).
+FROM python:3.13-slim
 
-# Set environment variables
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    UV_LINK_MODE=copy
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    gcc \
-    g++ \
-    libpq-dev \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Create app user
-RUN useradd --create-home --shell /bin/bash app
-
-# Set work directory
+RUN pip install --no-cache-dir uv && useradd --create-home app
 WORKDIR /app
 
-# Install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install dependencies from the lockfile (uv.lock is the source of truth).
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-install-project --no-dev
 
-# Development stage
-FROM base as development
-
-# Install development dependencies
-RUN pip install pytest pytest-asyncio httpx black isort flake8
-
-# Copy source code
-COPY --chown=app:app . .
-
-# Switch to app user
+# App source
+COPY . .
+RUN chown -R app:app /app
 USER app
 
-# Expose port
 EXPOSE 8000
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD python -c "import urllib.request as u,sys; sys.exit(0 if u.urlopen('http://localhost:8000/health').status==200 else 1)"
 
-# Development command
-CMD ["uvicorn", "enterprise_app:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
-
-# Production stage
-FROM base as production
-
-# Copy source code
-COPY --chown=app:app . .
-
-# Remove development files
-RUN rm -rf tests/ .pytest_cache/ .git/
-
-# Switch to app user
-USER app
-
-# Expose port
-EXPOSE 8000
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
-
-# Production command
-CMD ["uvicorn", "enterprise_app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
-
-# Worker stage for Celery
-FROM base as worker
-
-# Copy source code
-COPY --chown=app:app . .
-
-# Switch to app user
-USER app
-
-# Celery worker command
-CMD ["celery", "-A", "core.tasks.celery_app", "worker", "--loglevel=info", "--concurrency=2"]
-
-# Celery beat scheduler
-FROM base as scheduler
-
-# Copy source code
-COPY --chown=app:app . .
-
-# Switch to app user
-USER app
-
-# Celery beat command
-CMD ["celery", "-A", "core.tasks.celery_app", "beat", "--loglevel=info"]
-
-# Flower monitoring
-FROM base as flower
-
-# Install flower
-RUN pip install flower
-
-# Copy source code
-COPY --chown=app:app . .
-
-# Switch to app user
-USER app
-
-# Expose flower port
-EXPOSE 5555
-
-# Flower command
-CMD ["celery", "-A", "core.tasks.celery_app", "flower", "--host=0.0.0.0", "--port=5555"]
+CMD ["uv", "run", "--no-sync", "uvicorn", "main:fastapi_app", "--host", "0.0.0.0", "--port", "8000"]

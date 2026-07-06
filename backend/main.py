@@ -1,70 +1,71 @@
-from fastapi import FastAPI, UploadFile, Form
+# main.py
+"""
+Talk to DB API - Refactored and Modular
+
+A FastAPI application for chatting with databases using natural language.
+This version features a clean, modular architecture with separated concerns.
+"""
+
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-import os
-import shutil
-import tempfile
-import requests
-from main_graph import app as langgraph_app  # Your LangGraph app
 
-app = FastAPI()
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+from core.config import (
+    API_TITLE,
+    API_VERSION,
+    CORS_ORIGINS,
+    CORS_ALLOW_CREDENTIALS,
+    CORS_ALLOW_METHODS,
+    CORS_ALLOW_HEADERS,
 )
+from api.endpoints import create_endpoints
 
 
-@app.post("/chat/")
-async def chat_with_db(
-    question: str = Form(...), db_file: UploadFile = None, db_url: str = Form(None)
-):
-    try:
-        # STEP 1: Get the DB file (from upload or URL)
-        temp_dir = tempfile.mkdtemp()
-        db_path = None
+def create_app() -> FastAPI:
+    """Create and configure the FastAPI application."""
 
-        if db_file:
-            db_path = os.path.join(temp_dir, db_file.filename)
-            with open(db_path, "wb") as f:
-                shutil.copyfileobj(db_file.file, f)
+    # Create FastAPI app
+    app = FastAPI(
+        title=API_TITLE,
+        version=API_VERSION,
+        description="API for chatting with databases using natural language",
+        docs_url="/docs",
+        redoc_url="/redoc",
+    )
 
-        elif db_url:
-            if not db_url.endswith(".db"):
-                return JSONResponse(
-                    status_code=400,
-                    content={"error": "URL must point to a `.db` file."},
-                )
-            db_path = os.path.join(temp_dir, "downloaded.db")
-            response = requests.get(db_url)
-            if response.status_code == 200:
-                with open(db_path, "wb") as f:
-                    f.write(response.content)
-            else:
-                return JSONResponse(
-                    status_code=400, content={"error": f"Failed to fetch DB from URL."}
-                )
+    # Add CORS middleware
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=CORS_ORIGINS,
+        allow_credentials=CORS_ALLOW_CREDENTIALS,
+        allow_methods=CORS_ALLOW_METHODS,
+        allow_headers=CORS_ALLOW_HEADERS,
+    )
 
-        else:
-            return JSONResponse(
-                status_code=400, content={"error": "No DB file or URL provided."}
-            )
+    # Register endpoints
+    create_endpoints(app)
 
-        # STEP 2: Run through LangGraph
-        state = {"question": question, "db_path": db_path}
+    return app
 
-        result = langgraph_app.invoke(state)
 
-        # STEP 3: Return to frontend
-        return {
-            "answer": result.get("answer", "No answer."),
-            "sql": result.get("sql", None),
-            "results": result.get("results", []),
-            "follow_up_questions": result.get("follow_up_questions", []),
-        }
+# Create the FastAPI app instance
+fastapi_app = create_app()
 
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
+# For backwards compatibility
+app = fastapi_app
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    print(f"Starting {API_TITLE} v{API_VERSION}")
+    print("Features:")
+    print("- Modular architecture with clean separation of concerns")
+    print("- Schema extraction and caching")
+    print("- Support for SQLite and PostgreSQL")
+    print("- Natural language to SQL conversion")
+    print("- File upload and URL download support")
+    print()
+
+    uvicorn.run(
+        "main:fastapi_app", host="0.0.0.0", port=8000, reload=True, log_level="info"
+    )

@@ -51,11 +51,14 @@ backend/llm/
 
 ```python
 class LLMProvider(Protocol):
-    def complete(self, system: str, user: str, *, temperature: float = 0.0,
-                 max_tokens: int | None = None) -> str:
-        """Send one system+user turn and return the model's raw text. Raises on transport
-        error (the service layer maps that to a retryable error dict)."""
+    def complete(self, system: str, user: str) -> str:
+        """Send one system+user turn and return the model's raw text. Raises LLMError
+        (with a .retryable flag) on transport failure; the service layer maps that to
+        a retryable error dict."""
 ```
+
+Model and temperature are **constructor config** on each provider, not per-call kwargs — no
+call site varies them per call (YAGNI; `max_tokens` dropped for the same reason).
 
 Providers return **raw text**; all prompt-building and JSON parsing stays in the service
 layer, so adapters are tiny and share zero logic.
@@ -125,8 +128,8 @@ The LangGraph wiring and every state key are untouched — the return contracts 
 | Var | Default | Notes |
 |---|---|---|
 | `LLM_PROVIDER` | `gemini` | `gemini` \| `openai` |
-| `LLM_MODEL` | `gemini-1.5-flash` | model id for the active provider |
-| `LLM_TEMPERATURE` | `0.0` | optional |
+| `LLM_MODEL` | `gemini-1.5-flash` (gemini) | **required** for `openai` — a BYO endpoint has no sane universal default |
+| `LLM_TEMPERATURE` | unset | unset → provider default (matches pre-refactor behavior: no temperature sent) |
 | `GEMINI_API_KEY` | — | required for gemini (unchanged) |
 | `LLM_API_KEY` | — | required for openai |
 | `LLM_BASE_URL` | — | required for openai (e.g. `https://api.openai.com/v1`) |

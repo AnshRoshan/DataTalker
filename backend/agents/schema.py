@@ -1,6 +1,7 @@
 # agents/schema.py
 import os
 import re
+import time
 import json  # For physical cache
 import hashlib  # For creating safe filenames from paths/URIs
 from pathlib import Path  # For easier path manipulation
@@ -12,9 +13,25 @@ from sqlalchemy.engine.url import make_url  # To parse database URIs
 from sqlalchemy.sql.elements import TextClause
 from sqlalchemy.sql.schema import FetchedValue  # Import FetchedValue
 
+from core.config import CACHE_EXPIRY_SECONDS
+
 # --- Configuration ---
 DEFAULT_PHYSICAL_CACHE_DIR = Path(os.path.expanduser("~")) / ".text_to_sql_schema_cache"
 # ---------------------
+
+
+def _is_cache_fresh(cached: Dict[str, Any], current_mod_time: Optional[float], ttl: int) -> bool:
+    """Whether a schema-cache entry is still valid.
+
+    SQLite (mod_time known): fresh iff the stored mod_time matches the file's.
+    Non-file DBs (Postgres etc., mod_time None): no cheap change signal, so bound
+    staleness with a TTL against a stored `saved_at` (CORR-1: these entries were
+    previously treated as valid forever, even across restarts).
+    """
+    if current_mod_time is not None:
+        return cached.get("mod_time") == current_mod_time
+    saved_at = cached.get("saved_at")
+    return saved_at is not None and (time.time() - saved_at) <= ttl
 
 
 # Initialize a first-level in-memory cache
@@ -118,17 +135,9 @@ class SchemaAgent:
             with open(filepath, "r") as f:
                 cached_content = json.load(f)
 
-            # Validate for SQLite based on modification time
-            if current_mod_time_for_sqlite is not None:  # This is an SQLite file
-                stored_mod_time = cached_content.get("mod_time")
-                if (
-                    stored_mod_time is None
-                    or stored_mod_time != current_mod_time_for_sqlite
-                ):
-                    print(
-                        f"[SchemaAgent] Physical cache stale (mod_time mismatch) for: {filepath.name}"
-                    )
-                    return None  # Stale
+            if not _is_cache_fresh(cached_content, current_mod_time_for_sqlite, CACHE_EXPIRY_SECONDS):
+                print(f"[SchemaAgent] Physical cache stale for: {filepath.name}")
+                return None
 
             print(f"[SchemaAgent] Loaded from physical cache: {filepath.name}")
             return cached_content.get("schema_data")  # Return only the schema_data part
@@ -149,8 +158,8 @@ class SchemaAgent:
         mod_time_for_sqlite: Optional[float],
     ):
         try:
-            # Data to store in the JSON file
-            data_to_store: Dict[str, Any] = {"schema_data": schema_data}
+            # Data to store in the JSON file (saved_at bounds staleness for non-file DBs)
+            data_to_store: Dict[str, Any] = {"schema_data": schema_data, "saved_at": time.time()}
             if mod_time_for_sqlite is not None:
                 data_to_store["mod_time"] = mod_time_for_sqlite
 
@@ -422,19 +431,11 @@ class SchemaAgent:
             full_schema_data = None  # Initialize
             cached_in_memory = in_memory_schema_cache.get(cache_key)
             if cached_in_memory:
-                is_stale = False
-                if current_sqlite_mod_time is not None:
-                    if cached_in_memory.get("mod_time") != current_sqlite_mod_time:
-                        is_stale = True
-
-                if not is_stale:
-                    print(
-                        f"[SchemaAgent] Using in-memory cached schema for: {cache_key}"
-                    )
+                if _is_cache_fresh(cached_in_memory, current_sqlite_mod_time, CACHE_EXPIRY_SECONDS):
+                    print(f"[SchemaAgent] Using in-memory cached schema for: {cache_key}")
                     full_schema_data = cached_in_memory["schema_data"]
                 else:
                     print(f"[SchemaAgent] In-memory cache stale for: {cache_key}")
-                    # No assignment to full_schema_data, so it remains None or previous value
 
             if full_schema_data is None:  # Check if not loaded from in-memory cache
                 physical_cache_file = self._get_physical_cache_filepath(cache_key)
@@ -447,6 +448,7 @@ class SchemaAgent:
                     in_memory_schema_cache[cache_key] = {
                         "schema_data": full_schema_data,
                         "mod_time": current_sqlite_mod_time,
+                        "saved_at": time.time(),
                     }
                 else:
                     print(
@@ -461,6 +463,7 @@ class SchemaAgent:
                     in_memory_schema_cache[cache_key] = {
                         "schema_data": full_schema_data,
                         "mod_time": current_sqlite_mod_time,
+                        "saved_at": time.time(),
                     }
 
             final_detailed_schema_to_format = full_schema_data.get(

@@ -39,7 +39,10 @@ backend/llm/
     gemini.py          GeminiProvider
     openai_compat.py   OpenAICompatProvider
   factory.py           get_provider()  (config-driven, cached)
-  prompts.py           SQL + answer system-instruction builders (moved out of gemini.py)
+  prompts.py           SQL + answer system-instruction builders (moved out of gemini.py).
+                       While moving: fix the SQL prompt line "Multiple statements can be
+                       separated by semicolons" → instruct ONE read-only SELECT/WITH only
+                       (it contradicts the SEC-01 validator and wastes retries).
   service.py           generate_sql_or_response(...) + format_answer(...)  (same contracts)
 ```
 `backend/llm/gemini.py` is **deleted**. The three agent imports switch to `llm.service`.
@@ -68,11 +71,16 @@ layer, so adapters are tiny and share zero logic.
   extracts `choices[0].message.content`. `base_url` covers OpenAI (`https://api.openai.com/v1`),
   Azure OpenAI, local vLLM/Ollama, a LiteLLM proxy, or a Bedrock gateway.
 
-**Transport-level timeout and bounded retry live inside each provider's `complete()`** (reusing
-the current Gemini constants: 60s timeout, `MAX_RETRIES`, backoff). The service layer does **not**
-re-retry — empty-result retries are already handled separately by `SQLRetryAgent` in the graph. On
-final failure the provider raises; the service maps that to a generic error dict (no raw upstream
-body to the client — consistent with PR-05).
+**The retry loop lives ONCE in the service layer, wrapped around `complete()` + parse** (reusing
+the current constants: `MAX_RETRIES=3`, `RETRY_DELAY_SECONDS` backoff). Rationale: the current
+Gemini loop retries **parse failures too** (model returned bad JSON / missing keys —
+`gemini.py:219`), not just transport errors, and parsing happens above the provider. Putting
+retry in each provider would silently lose bad-JSON retry (`SQLRetryAgent` only covers
+empty-results-after-execution, not malformed model output). With the loop in the service,
+providers stay trivial — one POST with a timeout, raise on failure — and both providers get an
+identical retry policy for free. Side effect (benign, deliberate): `format_answer` gains the
+same retry loop (today it has none). On final failure the service returns a generic error dict
+(no raw upstream body to the client — consistent with PR-05).
 
 ### Factory (`factory.py`)
 
@@ -105,6 +113,10 @@ unavailable.", "retryable": True}` (generic message; detail logged server-side).
   → `from llm.service import generate_sql_or_response`; update the one call.
 - `agents/sql_retry.py`: same.
 - `agents/answer.py`: `from llm.gemini import format_answer` → `from llm.service import format_answer`.
+- `agents/sql_retry.py` (drive-by, 3-line deletion): `_analyze_failure` currently suggests
+  multi-statement SQL ("Or combine: SELECT …; SELECT …", "Generate multiple queries") — the
+  SEC-01 validator rejects those unconditionally, so every such retry is a guaranteed failure.
+  Remove the multi-query suggestions.
 
 The LangGraph wiring and every state key are untouched — the return contracts are identical.
 
@@ -139,7 +151,9 @@ A `FakeProvider` (returns canned strings, no network) makes the seam unit-testab
 
 - `test_llm_service.py` — with a `FakeProvider`: `generate_sql_or_response` parses
   `{"sql":…}`, `{"response":…}`, and malformed → `{"error":…}`; `format_answer` parses
-  answer + follow-ups; a provider that raises → `{"error", "retryable": True}`.
+  answer + follow-ups; a provider that raises → `{"error", "retryable": True}`; **retry
+  behavior**: a FakeProvider returning bad JSON then good JSON succeeds on the second
+  attempt (proves the parse-retry loop survived the refactor).
 - `test_llm_factory.py` — `LLM_PROVIDER=openai` → `OpenAICompatProvider`; unset/`gemini` →
   `GeminiProvider`; missing `LLM_BASE_URL` for openai → clear error.
 

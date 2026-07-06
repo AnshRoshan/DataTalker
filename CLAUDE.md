@@ -141,7 +141,7 @@ Schema is reflected once by **SchemaAgent** and cached.
 Phase 1 fixed the critical/high security + prod items (per-finding status in
 `docs/CODEBASE_AUDIT.md`). Current state:
 
-**Fixed in Phase 1** (each has an assert-based test in `backend/test_*.py`):
+**Fixed in Phase 1 + Phase 2A** (each has an assert-based test in `backend/test_*.py`):
 1. ✅ **SEC-01** — SQL is now an allowlist: a single read-only `SELECT`/`WITH` on a read-only
    engine (`agents/validator.py`, `agents/db_executor.py`). Multi-statement rejected.
 2. ✅ **SEC-02 / SEC-06** — API-key auth on all data routes (`DATATALKER_API_KEY`, deny-by-default)

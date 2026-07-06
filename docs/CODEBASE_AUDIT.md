@@ -33,8 +33,9 @@ It is about four structural facts:
 2. **It cannot scale as built.** Every request is synchronous work run on the async event loop
    with no offload, so the server is effectively single-threaded and one slow LLM call stalls
    everything. (PR-02)
-3. **It is not customizable.** The LLM vendor, the prompts, the SQL-safety rules, the two DB
-   dialects, and the (nonexistent) tenant boundary are all frozen in Python literals. (EC-01…10)
+3. **It is not customizable.** The prompts, the SQL-safety rules, the two DB dialects, and the
+   (nonexistent) tenant boundary are all frozen in Python literals. (EC-02…10; the LLM vendor
+   itself is no longer frozen — EC-01 fixed on `phase2-pluggable-llm`.)
 4. **It is not honest with itself.** ~4,000 lines of a dead "enterprise" stack that *doesn't
    compile* — plus a test suite and Docker/compose files that all target it — create a false
    impression of auth, scale, and monitoring that do not exist. The docs promise "1000 concurrent
@@ -301,7 +302,7 @@ exposure to untrusted input or real data.
 
 ### Phase 2 — Make it a customizable enterprise product (the differentiators)
 12. **Pluggable LLM provider** (`LLMProvider` protocol + factory; Gemini + OpenAI-compatible;
-    consider LiteLLM). → EC-01.
+    consider LiteLLM). → EC-01. ✅ **Done on `phase2-pluggable-llm`** — see EC-01 above.
 13. **Dialect registry** (Snowflake/BigQuery/Redshift/MySQL/SQL Server + per-dialect prompts). → EC-03.
 14. **Governance layer:** principal+role → schema allowlist + column masking + post-gen SQL allow-model
     with RLS predicate injection; per-request audit log. → EC-05, EC-06, EC-08.

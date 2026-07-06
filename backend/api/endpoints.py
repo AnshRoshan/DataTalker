@@ -49,11 +49,11 @@ def create_endpoints(app: FastAPI) -> None:
             )
 
             # Prepare response
+            # ponytail: do NOT echo database_uri/path back — a postgresql:// URI leaks the
+            # password to the client (SEC-05).
             response_data = {
                 "message": "Schema extracted and cached successfully",
-                "database_uri": db_uri,
                 "database_dialect": db_dialect,
-                "database_path": local_db_path,
                 "tables": SchemaService.get_schema_tables(schema_data),
                 "schema_description": schema_data.get("schema_description", ""),
                 "cached": True,
@@ -64,7 +64,8 @@ def create_endpoints(app: FastAPI) -> None:
         except HTTPException:
             raise
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+            print(f"[endpoints] internal error: {e!r}")
+            raise HTTPException(status_code=500, detail="Internal server error.")
         finally:
             # Cleanup temporary files (but keep uploaded files for potential reuse)
             if temp_file_to_cleanup and not db_file:
@@ -107,7 +108,8 @@ def create_endpoints(app: FastAPI) -> None:
         except HTTPException:
             raise
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+            print(f"[endpoints] internal error: {e!r}")
+            raise HTTPException(status_code=500, detail="Internal server error.")
         finally:
             # Cleanup temporary files
             if temp_file_to_cleanup:

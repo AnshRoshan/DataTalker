@@ -51,16 +51,16 @@ class DBExecutorAgent:
             return {**state, "results": results, "sql_executed": True}
 
         except sqlalchemy_exc.SQLAlchemyError as e:
-            error_message = f"SQLAlchemy Execution Error ({type(e).__name__}) on sql {sql}: {str(e)}"
-            print(f"[DBExecutorAgent] {error_message}")
-            return {**state, "results": None, "sql_executed": False, "error": error_message}
+            # ponytail: full detail to the server log only; the client gets a generic message
+            # (the raw error embeds the SQL and can leak schema/paths — SEC-05/CORR-4).
+            print(f"[DBExecutorAgent] SQLAlchemyError ({type(e).__name__}) on sql {sql}: {e}")
+            return {**state, "results": None, "sql_executed": False, "error": "The query could not be executed."}
 
         except Exception as e:
             import traceback
 
-            error_message = f"Generic Execution Error ({type(e).__name__}) on sql {sql}: {str(e)}\n{traceback.format_exc()}"
-            print(f"[DBExecutorAgent] {error_message}")
-            return {**state, "results": None, "sql_executed": False, "error": error_message}
+            print(f"[DBExecutorAgent] Execution error ({type(e).__name__}) on sql {sql}: {e}\n{traceback.format_exc()}")
+            return {**state, "results": None, "sql_executed": False, "error": "The query could not be executed."}
         finally:
             if engine:
                 engine.dispose()

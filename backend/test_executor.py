@@ -32,4 +32,9 @@ try:
 finally:
     os.unlink(tmp.name)
 
+# a failing query returns a GENERIC error — the SQL / table names must not leak to the user
+r = run(HOSPITAL, "SELECT * FROM no_such_table_xyz")
+assert r["sql_executed"] is False, r
+assert "no_such_table_xyz" not in (r.get("error") or ""), r
+
 print("db_executor: all assertions passed")

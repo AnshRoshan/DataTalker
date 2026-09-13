@@ -1,316 +1,359 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
-import type { ChatMessageData, ChatResponse, HistoryTurn, InputMethod } from './types';
+import type {
+  ActiveDbRef,
+  ChatMessageData,
+  ChatResponse,
+  Connection,
+  HealthStatus,
+  NewConnectionInput,
+  ViewId,
+} from './types';
 import {
-    API_KEY_KEY,
-    API_URL_KEY,
-    loadChatHistory,
-    loadDbRef,
-    saveChatHistory,
-    saveDbRef,
+  createConnection,
+  checkConnection,
+  deleteConnection,
+  fetchConnections,
+  fetchHealth,
+  getErrorMessage,
+  sendChat,
+} from './lib/api';
+import {
+  loadActiveDbRef,
+  loadApiKey,
+  loadApiUrl,
+  loadChatHistory,
+  saveActiveDbRef,
+  saveChatHistory,
+  saveSettings,
 } from './lib/storage';
-import Sidebar from './components/Sidebar';
-import Header from './components/Header';
-import ChatArea from './components/ChatArea';
-import InputArea from './components/InputArea';
+import IconRail from './components/IconRail';
+import TopBar from './components/TopBar';
+import SettingsModal from './components/SettingsModal';
+import ChatView from './components/chat/ChatView';
 
-const REQUEST_TIMEOUT_MS = 120_000;
-/** How many previous turns are sent to the backend for context. */
-const HISTORY_WINDOW = 5;
-const DEFAULT_API_URL = 'http://127.0.0.1:8000';
+// The schema explorer pulls in the graph library; keep it out of the main chunk.
+const ConnectionsView = lazy(() => import('./components/connections/ConnectionsView'));
+const SchemaView = lazy(() => import('./components/schema/SchemaView'));
 
-const getErrorMessage = (err: unknown, timedOut: boolean): string => {
-    if (axios.isCancel(err)) {
-        return timedOut
-            ? 'The request timed out after 120 seconds. Try a simpler question or check the backend.'
-            : 'Request cancelled.';
-    }
-    if (axios.isAxiosError(err)) {
-        const data: unknown = err.response?.data;
-        if (data && typeof data === 'object') {
-            const detail = (data as { detail?: unknown; error?: unknown }).detail;
-            const errorText = (data as { error?: unknown }).error;
-            const message = detail ?? errorText;
-            if (typeof message === 'string' && message) return message;
-            if (message !== undefined && message !== null) return JSON.stringify(message);
-        }
-        if (typeof data === 'string' && data) return data;
-        if (err.response) return `Server error (HTTP ${err.response.status}).`;
-        return 'Failed to reach the server. Check if the backend is running.';
-    }
-    return 'An unexpected error occurred.';
-};
+const ViewFallback: React.FC = () => (
+  <div className="flex flex-1 items-center justify-center">
+    <span className="font-display text-[12px] text-fg/40">Loading...</span>
+  </div>
+);
+
+const HEALTH_POLL_MS = 30_000;
 
 const App: React.FC = () => {
-    const [chatHistory, setChatHistory] = useState<ChatMessageData[]>(() => loadChatHistory());
-    const [inputMethod, setInputMethod] = useState<InputMethod>(() => loadDbRef()?.inputMethod ?? 'upload');
-    const [dbPath, setDbPath] = useState<string>(() => loadDbRef()?.dbPath ?? '');
-    const [dbUrl, setDbUrl] = useState<string>(() => loadDbRef()?.dbUrl ?? '');
-    const [dbFile, setDbFile] = useState<File | null>(null);
-    const [userInput, setUserInput] = useState<string>('');
-    const [isLoading, setIsLoading] = useState<boolean>(false);
-    const [error, setError] = useState<string | null>(null);
-    const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
-    const [apiUrl, setApiUrl] = useState<string>(() => localStorage.getItem(API_URL_KEY) || DEFAULT_API_URL);
-    const [apiKey, setApiKey] = useState<string>(() => localStorage.getItem(API_KEY_KEY) || '');
-    const abortControllerRef = useRef<AbortController | null>(null);
+  const [view, setView] = useState<ViewId>('chat');
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [apiUrl, setApiUrl] = useState<string>(() => loadApiUrl());
+  const [apiKey, setApiKey] = useState<string>(() => loadApiKey());
 
-    useEffect(() => {
-        const mediaQuery = window.matchMedia('(max-width: 768px)');
-        const handleMediaQueryChange = (e: MediaQueryListEvent) => {
-            setSidebarOpen(!e.matches);
-        };
-        if (mediaQuery.matches) {
-            setSidebarOpen(false);
-        }
+  // Chat state (persisted, last 50)
+  const [messages, setMessages] = useState<ChatMessageData[]>(() => loadChatHistory());
+  const [isLoading, setIsLoading] = useState(false);
+  const [chatError, setChatError] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
-        mediaQuery.addEventListener('change', handleMediaQueryChange);
-        return () => mediaQuery.removeEventListener('change', handleMediaQueryChange);
-    }, []);
+  // Active database reference (sent as connection_id when it is a saved connection)
+  const [activeRef, setActiveRef] = useState<ActiveDbRef | null>(() => loadActiveDbRef());
+  /** Success/failure of the last request made with a non-connection ref. */
+  const [quickRefOk, setQuickRefOk] = useState<boolean | null>(null);
 
-    // Persistence (FE-09)
-    useEffect(() => {
-        saveChatHistory(chatHistory);
-    }, [chatHistory]);
-    useEffect(() => {
-        saveDbRef({ inputMethod, dbPath, dbUrl });
-    }, [inputMethod, dbPath, dbUrl]);
+  // Saved connections
+  const [connections, setConnections] = useState<Connection[]>([]);
+  const [connectionsLoading, setConnectionsLoading] = useState(false);
+  const [connectionsError, setConnectionsError] = useState<string | null>(null);
 
-    const isAbsolutePath = (path: string): boolean => {
-        // Check for Windows absolute paths (C:\, D:\, etc.)
-        if (/^[A-Za-z]:\\/.test(path)) return true;
-        // Check for Unix/Linux absolute paths (starting with /)
-        if (path.startsWith('/')) return true;
-        // Check for UNC paths (\\server\share)
-        if (path.startsWith('\\\\')) return true;
-        return false;
+  // Health badge
+  const [health, setHealth] = useState<HealthStatus>('checking');
+
+  /* ---------------------------- persistence ---------------------------- */
+
+  useEffect(() => {
+    saveChatHistory(messages);
+  }, [messages]);
+
+  useEffect(() => {
+    saveActiveDbRef(activeRef);
+  }, [activeRef]);
+
+  /* ------------------------------ health ------------------------------- */
+
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      const status = await fetchHealth(apiUrl, apiKey);
+      if (!cancelled) setHealth(status);
     };
-
-    const isPostgresUrl = (url: string): boolean => {
-        return url.startsWith('postgresql://') || url.startsWith('postgres://');
+    void poll();
+    const id = window.setInterval(() => void poll(), HEALTH_POLL_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
     };
+  }, [apiUrl, apiKey]);
 
-    const validateDbSelection = (): string | null => {
-        if (inputMethod === 'upload' && !dbFile && !dbPath.trim()) {
-            return 'Please select a local database file (or provide an advanced server path) first.';
+  /* ---------------------------- connections ---------------------------- */
+
+  const refreshConnections = useCallback(async () => {
+    setConnectionsLoading(true);
+    setConnectionsError(null);
+    try {
+      const data = await fetchConnections(apiUrl, apiKey);
+      setConnections(data.connections ?? []);
+    } catch (err) {
+      setConnectionsError(getErrorMessage(err));
+    } finally {
+      setConnectionsLoading(false);
+    }
+  }, [apiUrl, apiKey]);
+
+  // Load the connection list once per apiUrl/apiKey change.
+  useEffect(() => {
+    setConnections([]);
+    void refreshConnections();
+  }, [refreshConnections]);
+
+  const handleCreateConnection = useCallback(
+    async (input: NewConnectionInput): Promise<Connection> => {
+      try {
+        const created = await createConnection(apiUrl, apiKey, input);
+        setConnections(prev => [...prev, created]);
+        return created;
+      } catch (err) {
+        throw new Error(getErrorMessage(err));
+      }
+    },
+    [apiUrl, apiKey],
+  );
+
+  const handleCheckConnection = useCallback(
+    async (id: number) => {
+      try {
+        const updated = await checkConnection(apiUrl, apiKey, id);
+        setConnections(prev =>
+          prev.map(c =>
+            c.id === id
+              ? { ...c, last_checked_at: updated.last_checked_at, last_status: updated.last_status ?? c.last_status }
+              : c,
+          ),
+        );
+      } catch (err) {
+        throw new Error(getErrorMessage(err));
+      }
+    },
+    [apiUrl, apiKey],
+  );
+
+  const handleDeleteConnection = useCallback(
+    async (id: number) => {
+      try {
+        await deleteConnection(apiUrl, apiKey, id);
+        setConnections(prev => prev.filter(c => c.id !== id));
+        setActiveRef(ref => (ref?.kind === 'connection' && ref.id === id ? null : ref));
+      } catch (err) {
+        throw new Error(getErrorMessage(err));
+      }
+    },
+    [apiUrl, apiKey],
+  );
+
+  const handleSetActiveConnection = useCallback((conn: Connection) => {
+    setActiveRef({ kind: 'connection', id: conn.id, name: conn.name });
+    setQuickRefOk(null);
+  }, []);
+
+  const handleQuickAttach = useCallback((ref: ActiveDbRef) => {
+    setActiveRef(ref);
+    setQuickRefOk(null);
+  }, []);
+
+  /* ------------------------------- chat -------------------------------- */
+
+  const connectionStatusOk = useMemo(() => {
+    if (activeRef?.kind !== 'connection') return null;
+    const conn = connections.find(c => c.id === activeRef.id);
+    if (!conn || !conn.last_status) return null;
+    return conn.last_status.ok;
+  }, [activeRef, connections]);
+
+  const refOk: boolean | null =
+    activeRef?.kind === 'connection' ? connectionStatusOk : quickRefOk;
+
+  const sendQuestion = useCallback(
+    async (question: string) => {
+      const trimmed = question.trim();
+      if (!trimmed || isLoading) return;
+      if (!activeRef) {
+        setChatError('Attach a database first. Open Connections to pick one or quick-attach a file.');
+        return;
+      }
+
+      setChatError(null);
+      setIsLoading(true);
+
+      const newChat: ChatMessageData = {
+        id: crypto.randomUUID(),
+        question: trimmed,
+        answer: '',
+        sql: '',
+        results: [],
+        isTyping: true,
+      };
+      setMessages(prev => [...prev, newChat]);
+
+      const controller = new AbortController();
+      abortRef.current = controller;
+      let timedOut = false;
+      const timeoutId = window.setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, 120_000);
+
+      try {
+        const history = messages
+          .filter(m => !m.isTyping && m.answer)
+          .slice(-5)
+          .map(m => ({ question: m.question, answer: m.answer, sql: m.sql }));
+
+        const data: ChatResponse = await sendChat({
+          apiUrl,
+          apiKey,
+          question: trimmed,
+          dbRef: activeRef,
+          history,
+          signal: controller.signal,
+        });
+
+        let results: Record<string, unknown>[] | Record<string, unknown> = [];
+        if (Array.isArray(data.results)) {
+          results = data.results;
+        } else if (data.results && typeof data.results === 'object') {
+          const keys = Object.keys(data.results);
+          results = keys.every(k => /^\d+$/.test(k)) ? results : data.results;
         }
-        if (inputMethod === 'upload' && dbPath.trim() && !isAbsolutePath(dbPath)) {
-            return 'Database path must be absolute (e.g., C:\\path\\to\\file.db or /path/to/file.db).';
-        }
-        if (inputMethod === 'url' && !dbUrl.trim()) {
-            return 'Please provide a database URL first.';
-        }
-        return null;
-    };
 
-    /**
-     * Single request path for both new questions and follow-up clicks (FE-05).
-     * Returns true when the question was accepted and dispatched.
-     */
-    const sendQuestion = async (question: string, isFollowUp: boolean): Promise<boolean> => {
-        const trimmedQuestion = question.trim();
-        if (!trimmedQuestion) return false;
-
-        const validationError = validateDbSelection();
-        if (validationError) {
-            setError(validationError);
-            return false;
-        }
-
-        setIsLoading(true);
-        setError(null);
-        if (!isFollowUp) {
-            setUserInput('');
-        }
-
-        const newChat: ChatMessageData = {
-            id: crypto.randomUUID(),
-            question: trimmedQuestion,
-            answer: '',
-            sql: '',
-            results: [],
-            isTyping: true,
-        };
-
-        setChatHistory(prev => [...prev, newChat]);
-
-        const controller = new AbortController();
-        abortControllerRef.current = controller;
-        let timedOut = false;
-        const timeoutId = window.setTimeout(() => {
-            timedOut = true;
-            controller.abort();
-        }, REQUEST_TIMEOUT_MS);
-
-        try {
-            const formData = new FormData();
-            formData.append('question', trimmedQuestion);
-
-            if (inputMethod === 'upload') {
-                if (dbFile) {
-                    formData.append('db_file', dbFile);
-                } else if (dbPath) {
-                    formData.append('db_path', dbPath);
+        setMessages(prev =>
+          prev.map(m =>
+            m.id === newChat.id
+              ? {
+                  ...m,
+                  answer: data.answer || 'No answer provided.',
+                  sql: data.sql_executed || data.sql || '',
+                  results,
+                  follow_up_questions: data.follow_up_questions || [],
+                  results_truncated: data.results_truncated,
+                  sql_executed: data.sql_executed,
+                  latency_ms: data.latency_ms,
+                  row_cap: data.row_cap,
+                  isTyping: false,
                 }
-            } else if (dbUrl) {
-                if (isPostgresUrl(dbUrl)) {
-                    formData.append('db_connection_string', dbUrl);
-                } else {
-                    formData.append('db_url', dbUrl);
-                }
-            }
-
-            // Send the last few completed turns so the backend can use conversation context.
-            const historyTurns: HistoryTurn[] = chatHistory
-                .filter(chat => !chat.isTyping)
-                .slice(-HISTORY_WINDOW)
-                .map(chat => ({ question: chat.question, answer: chat.answer, sql: chat.sql }));
-            if (historyTurns.length > 0) {
-                formData.append('history', JSON.stringify(historyTurns));
-            }
-
-            const headers: Record<string, string> = {};
-            if (apiKey) {
-                headers['Authorization'] = `Bearer ${apiKey}`;
-            }
-
-            const response = await axios.post<ChatResponse>(
-                `${apiUrl}/chat/`,
-                formData,
-                { headers, signal: controller.signal },
-            );
-            const data = response.data;
-
-            // Process results - filter out non-tabular data
-            let processedResults: Record<string, unknown>[] = [];
-            if (Array.isArray(data.results)) {
-                processedResults = data.results;
-            } else if (data.results && typeof data.results === 'object') {
-                const keys = Object.keys(data.results);
-                if (!keys.every(key => /^\d+$/.test(key))) {
-                    processedResults = [data.results];
-                }
-            }
-
-            setChatHistory(prev => prev.map(chat =>
-                chat.id === newChat.id ? {
-                    ...chat,
-                    answer: data.answer || 'No answer provided.',
-                    sql: data.sql_executed || data.sql || '',
-                    results: processedResults,
-                    follow_up_questions: data.follow_up_questions || [],
-                    results_truncated: data.results_truncated,
-                    latency_ms: data.latency_ms,
-                    row_cap: data.row_cap,
-                    isTyping: false,
-                } : chat
-            ));
-        } catch (err: unknown) {
-            const errorMessage = getErrorMessage(err, timedOut);
-            setError(errorMessage);
-            setChatHistory(prev => prev.map(chat =>
-                chat.id === newChat.id ? {
-                    ...chat,
-                    answer: `Sorry, there was an error: ${errorMessage}`,
-                    isTyping: false,
-                } : chat
-            ));
-        } finally {
-            window.clearTimeout(timeoutId);
-            abortControllerRef.current = null;
-            setIsLoading(false);
+              : m,
+          ),
+        );
+        if (activeRef.kind !== 'connection') setQuickRefOk(true);
+      } catch (err) {
+        const message = getErrorMessage(err, timedOut);
+        if (!axios.isCancel(err)) {
+          // User cancels do not need a banner; they are visible in the composer.
+          setChatError(message);
         }
-        return true;
-    };
+        if (activeRef.kind !== 'connection') setQuickRefOk(false);
+        setMessages(prev =>
+          prev.map(m =>
+            m.id === newChat.id
+              ? {
+                  ...m,
+                  answer: `Sorry, there was an error: ${message}`,
+                  isTyping: false,
+                }
+              : m,
+          ),
+        );
+      } finally {
+        window.clearTimeout(timeoutId);
+        abortRef.current = null;
+        setIsLoading(false);
+      }
+    },
+    [activeRef, apiUrl, apiKey, isLoading, messages],
+  );
 
-    const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-        e.preventDefault();
-        void sendQuestion(userInput, false);
-    };
+  const handleCancel = useCallback(() => {
+    abortRef.current?.abort();
+  }, []);
 
-    const handleFollowUpClick = (question: string) => {
-        void sendQuestion(question, true);
-    };
+  const handleClearChat = useCallback(() => {
+    abortRef.current?.abort();
+    setMessages([]);
+    setChatError(null);
+  }, []);
 
-    const handleCancelRequest = () => {
-        abortControllerRef.current?.abort();
-    };
+  const handleSaveSettings = useCallback((s: { apiUrl: string; apiKey: string }) => {
+    const normalizedUrl = s.apiUrl.replace(/\/$/, '');
+    setApiUrl(normalizedUrl);
+    setApiKey(s.apiKey);
+    setHealth('checking');
+    saveSettings(normalizedUrl, s.apiKey);
+  }, []);
 
-    const handleClearChat = () => {
-        abortControllerRef.current?.abort();
-        setChatHistory([]);
-        setError(null);
-    };
+  /* ------------------------------- render ------------------------------ */
 
-    const handleDbPathChange = (path: string) => {
-        setDbPath(path);
-        setDbFile(null); // A typed server path replaces any picked file.
-        setError(null); // Clear error when path changes
-    };
-
-    const handleDbFileChange = (file: File | null) => {
-        setDbFile(file);
-        setDbPath('');
-        setError(null);
-    };
-
-    const handleSaveSettings = (settings: { apiUrl: string; apiKey: string }) => {
-        setApiUrl(settings.apiUrl);
-        setApiKey(settings.apiKey);
-        try {
-            localStorage.setItem(API_URL_KEY, settings.apiUrl);
-            localStorage.setItem(API_KEY_KEY, settings.apiKey);
-        } catch {
-            // Best-effort persistence.
-        }
-    };
-
-    const toggleSidebar = () => {
-        setSidebarOpen(!sidebarOpen);
-    };
-
-    return (
-        <div className="flex h-screen overflow-hidden">
-            <Sidebar
-                isOpen={sidebarOpen}
-                toggleSidebar={toggleSidebar}
-                inputMethod={inputMethod}
-                setInputMethod={setInputMethod}
-                dbFile={dbFile}
-                handleDbFileChange={handleDbFileChange}
-                dbPath={dbPath}
-                handleDbPathChange={handleDbPathChange}
-                dbUrl={dbUrl}
-                setDbUrl={setDbUrl}
+  return (
+    <div className="ambient-bg flex h-dvh overflow-hidden text-fg">
+      <IconRail active={view} onChange={setView} />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <TopBar
+          activeRef={activeRef}
+          refOk={refOk}
+          health={health}
+          onOpenSettings={() => setSettingsOpen(true)}
+        />
+        {view === 'chat' ? (
+          <ChatView
+            messages={messages}
+            isLoading={isLoading}
+            error={chatError}
+            dbRef={activeRef}
+            refOk={refOk}
+            onSend={q => void sendQuestion(q)}
+            onCancel={handleCancel}
+            onDismissError={() => setChatError(null)}
+            onClearChat={handleClearChat}
+            onGoToConnections={() => setView('connections')}
+          />
+        ) : view === 'connections' ? (
+          <Suspense fallback={<ViewFallback />}>
+            <ConnectionsView
+              connections={connections}
+              isLoading={connectionsLoading}
+              loadError={connectionsError}
+              activeRef={activeRef}
+              onReload={() => void refreshConnections()}
+              onSetActive={handleSetActiveConnection}
+              onCreate={handleCreateConnection}
+              onCheck={handleCheckConnection}
+              onDelete={handleDeleteConnection}
+              onQuickAttach={handleQuickAttach}
             />
-            <div className="flex-1 flex flex-col overflow-hidden">
-                <Header
-                    toggleSidebar={toggleSidebar}
-                    isSidebarOpen={sidebarOpen}
-                    apiUrl={apiUrl}
-                    apiKey={apiKey}
-                    onSaveSettings={handleSaveSettings}
-                />
-                <ChatArea
-                    chatHistory={chatHistory}
-                    onFollowUpClick={handleFollowUpClick}
-                    isLoading={isLoading}
-                    onCancelRequest={handleCancelRequest}
-                    onClearChat={handleClearChat}
-                />
-                <InputArea
-                    userInput={userInput}
-                    setUserInput={setUserInput}
-                    handleSubmit={handleSubmit}
-                    isLoading={isLoading}
-                    error={error}
-                    onClearError={() => setError(null)}
-                    onCancelRequest={handleCancelRequest}
-                    apiUrl={`${apiUrl}/chat/`}
-                />
-            </div>
-        </div>
-    );
+          </Suspense>
+        ) : (
+          <Suspense fallback={<ViewFallback />}>
+            <SchemaView apiUrl={apiUrl} apiKey={apiKey} dbRef={activeRef} />
+          </Suspense>
+        )}
+      </div>
+      <SettingsModal
+        isOpen={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        apiUrl={apiUrl}
+        apiKey={apiKey}
+        onSave={handleSaveSettings}
+      />
+    </div>
+  );
 };
 
 export default App;

@@ -1,32 +1,44 @@
-# DataTalker — self-hostable, single-container image for the live API.
-# Single worker keeps the in-process schema cache coherent; a shared cache + multiple
-# workers is a later phase (see docs/CODEBASE_AUDIT.md PR-04).
+# DataTalker — self-hostable, single-container image.
+# Stage 1 builds the React SPA with bun; stage 2 runs the FastAPI API and serves the
+# built SPA from the same process (see main.py _mount_spa). Build context = repo root:
+#   docker build -f backend/Dockerfile -t datatalker .
+# Single worker keeps the in-process schema cache coherent (see audit PR-04).
+
+# ---- Stage 1: frontend -------------------------------------------------------
+FROM oven/bun:1 AS web
+WORKDIR /web
+COPY frontend/package.json frontend/bun.lock ./
+RUN bun install --frozen-lockfile
+COPY frontend/ .
+RUN bun run build
+
+# ---- Stage 2: API + SPA ------------------------------------------------------
 FROM python:3.13-slim
 
 LABEL org.opencontainers.image.title="DataTalker" \
       org.opencontainers.image.description="Chat with your database in natural language — NL to SQL with a read-only safety pipeline" \
-      org.opencontainers.image.licenses="MIT" \
-      org.opencontainers.image.source="https://github.com/your-org/DataTalker"
+      org.opencontainers.image.licenses="MIT"
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     UV_LINK_MODE=copy
 
 RUN pip install --no-cache-dir uv && useradd --create-home app
-WORKDIR /app
 
-# Install dependencies from the lockfile (uv.lock is the source of truth).
-COPY pyproject.toml uv.lock ./
+# Install backend dependencies from the lockfile (uv.lock is the source of truth).
+COPY backend/pyproject.toml backend/uv.lock /app/backend/
+WORKDIR /app/backend
 RUN uv sync --frozen --no-install-project --no-dev
 
-# App source
-COPY . .
+# App source + built SPA
+COPY backend/ /app/backend/
+COPY --from=web /web/dist /app/frontend/dist
 RUN chown -R app:app /app
 USER app
 
-# Persisted state: connections registry + audit log live here; mount a volume to keep
+# Persisted state: connections registry + audit log live here; mount volumes to keep
 # them across container upgrades.
-VOLUME ["/app/data", "/app/logs"]
+VOLUME ["/app/backend/data", "/app/backend/logs"]
 
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \

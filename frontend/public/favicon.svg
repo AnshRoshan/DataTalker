@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- DataTalker mark: a speech bubble over stacked database discs -->
+  <rect width="32" height="32" rx="6" fill="#0F172A"/>
+  <g fill="none" stroke="#22C55E" stroke-width="1.8">
+    <ellipse cx="16" cy="20.5" rx="8" ry="3.2"/>
+    <path d="M8 20.5v-4.5c0 1.77 3.58 3.2 8 3.2s8-1.43 8-3.2v4.5"/>
+    <path d="M8 16v-4.5c0 1.77 3.58 3.2 8 3.2s8-1.43 8-3.2V16"/>
+    <ellipse cx="16" cy="11.5" rx="8" ry="3.2"/>
+  </g>
+  <path d="M11 25.5 10 29l4-2.4z" fill="#22C55E"/>
+</svg>

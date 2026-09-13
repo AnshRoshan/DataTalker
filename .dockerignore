@@ -1,4 +1,4 @@
-# Keep the image slim — only backend/ is needed for the API image.
+# Keep the image slim: frontend deps are installed inside the bun stage.
 frontend/node_modules
 frontend/dist
 **/__pycache__

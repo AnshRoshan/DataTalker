@@ -36,8 +36,12 @@ from core.settings import get_settings
 logger = logging.getLogger(__name__)
 
 
-def create_endpoints(app: FastAPI) -> None:
-    """Create and register all API endpoints."""
+def create_endpoints(app: FastAPI, serve_spa: bool = False) -> None:
+    """Create and register all API endpoints.
+
+    serve_spa: when the built frontend is being served from "/", the API info
+    route is skipped so the SPA root wins (the mount is added after routes).
+    """
 
     # ponytail: sync `def` (not async) so Starlette runs the blocking schema reflection in
     # its threadpool instead of stalling the event loop for every request (PR-02).
@@ -309,36 +313,37 @@ def create_endpoints(app: FastAPI) -> None:
         """Clear all cached schemas."""
         return clear_cache()
 
-    @app.get("/", response_model=APIInfo)
-    async def root():
-        """Root endpoint with API information."""
-        settings = get_settings()
-        return {
-            "message": f"{settings.api_title} - Optimized with Schema Caching",
-            "version": settings.api_version,
-            "features": [
-                "Automatic schema extraction and caching",
-                "Separated schema extraction from query processing",
-                "Support for SQLite (local files, uploads, URLs), PostgreSQL, and MySQL (connection strings)",
-                "Real-time schema cache management",
-                "Direct PostgreSQL/MySQL database querying without downloads",
-                "Modular architecture with clean separation of concerns",
-            ],
-            "endpoints": {
-                "chat": "/chat/ (POST) - Chat with database (auto-extracts schema)",
-                "schema": "/schema/ (POST) - Extract and cache database schema",
-                "schema_graph": "/schema/graph/ (POST) - Schema relationship graph for the visual explorer",
-                "connections_list": "/connections/ (GET) - List registered database connections",
-                "connections_create": "/connections/ (POST) - Register a database connection (preflight-validated)",
-                "connections_delete": "/connections/{id} (DELETE) - Remove a registered connection",
-                "connections_check": "/connections/{id}/check (POST) - Re-run the connection preflight",
-                "schema_cache": "/schema/cache (GET) - View cached schemas",
-                "clear_cache": "/schema/cache (DELETE) - Clear schema cache",
-                "health": "/health (GET) - Health check",
-                "docs": "/docs - API documentation",
-                "openapi": "/openapi.json - OpenAPI specification",
-            },
-        }
+    if not serve_spa:
+        @app.get("/", response_model=APIInfo)
+        async def root():
+            """Root endpoint with API information."""
+            settings = get_settings()
+            return {
+                "message": f"{settings.api_title} - Optimized with Schema Caching",
+                "version": settings.api_version,
+                "features": [
+                    "Automatic schema extraction and caching",
+                    "Separated schema extraction from query processing",
+                    "Support for SQLite (local files, uploads, URLs), PostgreSQL, and MySQL (connection strings)",
+                    "Real-time schema cache management",
+                    "Direct PostgreSQL/MySQL database querying without downloads",
+                    "Modular architecture with clean separation of concerns",
+                ],
+                "endpoints": {
+                    "chat": "/chat/ (POST) - Chat with database (auto-extracts schema)",
+                    "schema": "/schema/ (POST) - Extract and cache database schema",
+                    "schema_graph": "/schema/graph/ (POST) - Schema relationship graph for the visual explorer",
+                    "connections_list": "/connections/ (GET) - List registered database connections",
+                    "connections_create": "/connections/ (POST) - Register a database connection (preflight-validated)",
+                    "connections_delete": "/connections/{id} (DELETE) - Remove a registered connection",
+                    "connections_check": "/connections/{id}/check (POST) - Re-run the connection preflight",
+                    "schema_cache": "/schema/cache (GET) - View cached schemas",
+                    "clear_cache": "/schema/cache (DELETE) - Clear schema cache",
+                    "health": "/health (GET) - Health check",
+                    "docs": "/docs - API documentation",
+                    "openapi": "/openapi.json - OpenAPI specification",
+                },
+            }
 
     @app.get("/health", response_model=HealthResponse)
     async def health_check():

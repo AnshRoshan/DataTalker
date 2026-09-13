@@ -2,3 +2,6 @@
 logs/
 data/
 *.log
+.env
+.vscode/
+__pycache__/

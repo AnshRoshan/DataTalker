@@ -1,6 +1,10 @@
 # agents/sql_retry.py
+import logging
+from typing import Any, Dict
+
 from llm.service import generate_sql_or_response
-from typing import Dict, Any
+
+logger = logging.getLogger(__name__)
 
 
 class SQLRetryAgent:
@@ -9,67 +13,67 @@ class SQLRetryAgent:
         Analyzes failed SQL execution and attempts to generate improved SQL.
         This agent is called when the initial SQL execution returns no results or fails.
         """
-        print(
-            "[SQLRetryAgent] received state:",
-            {k: v for k, v in state.items() if k not in ["detailed_schema", "results"]},
+        logger.debug(
+            "state keys: %s",
+            sorted(k for k in state if k not in ("detailed_schema", "results")),
         )
-        
+
         question = state.get("question", "")
         schema_description = state.get("schema_description")
         db_dialect = state.get("db_dialect", "sqlite")
         previous_sql = state.get("sql", "")
         previous_results = state.get("results", [])
         retry_count = state.get("retry_count", 0)
-        
+
         # Limit retry attempts
         max_retries = 2
         if retry_count >= max_retries:
-            print(f"[SQLRetryAgent] Maximum retry attempts ({max_retries}) reached.")
+            logger.info("Maximum retry attempts (%d) reached.", max_retries)
             state["error"] = f"Unable to generate working SQL after {max_retries} attempts."
             state["sql_needed"] = False
             return state
-        
+
         # Increment retry count
         state["retry_count"] = retry_count + 1
-        
+
         # Analyze the failure
         failure_context = self._analyze_failure(previous_sql, previous_results, question)
-        
+
         # Create enhanced prompt with failure context
         enhanced_schema = f"{schema_description}\n\n{failure_context}"
-        
-        print(f"[SQLRetryAgent] Retry attempt {retry_count + 1}/{max_retries} for {db_dialect}...")
-        print(f"[SQLRetryAgent] Previous SQL failed: {previous_sql}")
-        
+
+        logger.info("Retry attempt %d/%d for %s...", retry_count + 1, max_retries, db_dialect)
+        logger.debug("Previous SQL failed: %s", previous_sql)
+
         # Call the LLM function with enhanced context
         llm_result = generate_sql_or_response(
             schema=enhanced_schema, question=question, db_dialect=db_dialect
         )
-        
-        print(f"[SQLRetryAgent] Retry LLM Result: {llm_result}")
-        
+
+        logger.debug("Retry LLM result keys: %s", sorted(llm_result))
+
         # Process the LLM result
         if "sql" in llm_result:
-            print("[SQLRetryAgent] New SQL generated on retry.")
+            logger.info("New SQL generated on retry.")
             state["sql"] = llm_result["sql"]
             state["sql_needed"] = True
             state.pop("error", None)
             # Store previous attempt for learning
             state["previous_sql_attempts"] = state.get("previous_sql_attempts", []) + [previous_sql]
         elif "response" in llm_result:
-            print("[SQLRetryAgent] Direct response generated on retry.")
+            logger.info("Direct response generated on retry.")
             state["results"] = llm_result["response"]
             state["sql_needed"] = False
             state.pop("error", None)
         elif "error" in llm_result:
-            print(f"[SQLRetryAgent] Error from LLM on retry: {llm_result['error']}")
+            logger.warning("Error from LLM on retry: %s", llm_result['error'])
             state["error"] = f"LLM Error on retry {retry_count + 1}: {llm_result['error']}"
             state["sql_needed"] = False
         else:
-            print("[SQLRetryAgent] Unexpected result format from LLM on retry.")
+            logger.warning("Unexpected result format from LLM on retry.")
             state["error"] = f"Unexpected result format from LLM on retry attempt {retry_count + 1}."
             state["sql_needed"] = False
-        
+
         return state
     
     def _analyze_failure(self, previous_sql: str, previous_results: Any, question: str) -> str:

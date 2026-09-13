@@ -1,4 +1,5 @@
 # agents/validator.py
+import logging
 from typing import Any, Dict, Tuple
 import re
 
@@ -44,16 +45,29 @@ def is_read_only_select(sql: str) -> Tuple[bool, str]:
     return True, "SQL is a single read-only query."
 
 
+logger = logging.getLogger(__name__)
+
+
 class ValidatorAgent:
     def __call__(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        """Gate SQL execution: only a single read-only SELECT/WITH statement may pass."""
+        """Gate SQL execution: only a single read-only SELECT/WITH statement may
+        pass, and it must not reference governance-masked columns (EC-05)."""
         sql = state.get("sql", "")
         is_safe, reason = is_read_only_select(sql)
+        if is_safe:
+            masked = state.get("masked_columns")
+            if masked:
+                # Simple identifier check (no sqlglot) — see core/governance.py.
+                from core.governance import sql_selects_masked_column
+
+                mask_reason = sql_selects_masked_column(sql, set(masked))
+                if mask_reason:
+                    is_safe, reason = False, mask_reason
         state["is_safe"] = is_safe
         state["validation_reason"] = reason
         if not is_safe:
             state["unsafe_sql_attempt"] = sql
-            state["sql"] = "-- Query blocked by read-only guard"
+            state["sql"] = "-- Query blocked by the safety guard"
             state["response"] = f"Error: {reason} Query blocked for security."
-            print(f"[ValidatorAgent] blocked: {reason}")
+            logger.info("Blocked SQL: %s", reason)
         return state

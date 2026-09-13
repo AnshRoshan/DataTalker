@@ -1,14 +1,41 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import type { HealthStatus } from '../types';
 import Settings from './Settings';
 
 interface HeaderProps {
     toggleSidebar: () => void;
     isSidebarOpen: boolean;
+    apiUrl: string;
+    apiKey: string;
+    onSaveSettings: (settings: { apiUrl: string; apiKey: string }) => void;
 }
 
-const Header: React.FC<HeaderProps> = ({ toggleSidebar, isSidebarOpen }) => {
+const HEALTH_POLL_INTERVAL_MS = 30_000;
+const HEALTH_CHECK_TIMEOUT_MS = 10_000;
+
+const HEALTH_BADGE_STYLES: Record<HealthStatus, { badge: string; dot: string; label: string }> = {
+    checking: {
+        badge: 'from-gray-50 to-slate-50 border-gray-200',
+        dot: 'bg-gray-400',
+        label: 'Checking…',
+    },
+    connected: {
+        badge: 'from-green-50 to-emerald-50 border-green-200',
+        dot: 'bg-green-400',
+        label: 'Connected',
+    },
+    disconnected: {
+        badge: 'from-red-50 to-rose-50 border-red-200',
+        dot: 'bg-red-400',
+        label: 'Disconnected',
+    },
+};
+
+const Header: React.FC<HeaderProps> = ({ toggleSidebar, isSidebarOpen, apiUrl, apiKey, onSaveSettings }) => {
     const [isScrolled, setIsScrolled] = useState(false);
     const [showSettings, setShowSettings] = useState(false);
+    const [health, setHealth] = useState<HealthStatus>('checking');
+    const healthCheckRef = useRef<AbortController | null>(null);
 
     useEffect(() => {
         const handleScroll = () => {
@@ -17,6 +44,43 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, isSidebarOpen }) => {
         window.addEventListener('scroll', handleScroll);
         return () => window.removeEventListener('scroll', handleScroll);
     }, []);
+
+    // Real health check (FE-08): poll on mount, on apiUrl change, and every 30s.
+    useEffect(() => {
+        let disposed = false;
+
+        const checkHealth = async () => {
+            healthCheckRef.current?.abort();
+            const controller = new AbortController();
+            healthCheckRef.current = controller;
+            const timeoutId = window.setTimeout(() => controller.abort(), HEALTH_CHECK_TIMEOUT_MS);
+            try {
+                // /health requires no auth.
+                const response = await fetch(`${apiUrl}/health`, { signal: controller.signal });
+                if (!disposed) {
+                    setHealth(response.ok ? 'connected' : 'disconnected');
+                }
+            } catch {
+                if (!disposed) {
+                    setHealth('disconnected');
+                }
+            } finally {
+                window.clearTimeout(timeoutId);
+            }
+        };
+
+        setHealth('checking');
+        void checkHealth();
+        const intervalId = window.setInterval(() => void checkHealth(), HEALTH_POLL_INTERVAL_MS);
+
+        return () => {
+            disposed = true;
+            window.clearInterval(intervalId);
+            healthCheckRef.current?.abort();
+        };
+    }, [apiUrl]);
+
+    const badge = HEALTH_BADGE_STYLES[health];
 
     return (
         <>
@@ -59,9 +123,11 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, isSidebarOpen }) => {
 
                         <div className="flex items-center space-x-4">
                             <div className="hidden sm:flex items-center space-x-2">
-                                <div className="flex items-center space-x-2 px-3 py-2 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border border-green-200">
-                                    <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                                    <span className="text-sm font-medium text-green-700">Connected</span>
+                                <div className={`flex items-center space-x-2 px-3 py-2 bg-gradient-to-r rounded-lg border ${badge.badge}`}>
+                                    <div className={`w-2 h-2 rounded-full ${health === 'disconnected' ? '' : 'animate-pulse'} ${badge.dot}`}></div>
+                                    <span className={`text-sm font-medium ${health === 'connected' ? 'text-green-700' : health === 'disconnected' ? 'text-red-700' : 'text-gray-600'}`}>
+                                        {badge.label}
+                                    </span>
                                 </div>
                                 <div className="px-3 py-2 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
                                     <span className="text-sm font-medium text-blue-700">FastAPI</span>
@@ -83,7 +149,13 @@ const Header: React.FC<HeaderProps> = ({ toggleSidebar, isSidebarOpen }) => {
                 </div>
             </header>
 
-            <Settings isOpen={showSettings} onClose={() => setShowSettings(false)} />
+            <Settings
+                isOpen={showSettings}
+                onClose={() => setShowSettings(false)}
+                apiUrl={apiUrl}
+                apiKey={apiKey}
+                onSave={onSaveSettings}
+            />
         </>
     );
 };

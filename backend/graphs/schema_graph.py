@@ -1,15 +1,20 @@
 # graphs/schema_graph.py
 """Schema extraction graph using LangGraph."""
 
+import logging
+
 from langgraph.graph import StateGraph, END
-from typing import TypedDict, Optional, List, Dict, Any, Literal
+from typing import TypedDict, Optional, List, Dict, Any
 
 # Import agent classes
 from agents.schema import SchemaAgent
 
+logger = logging.getLogger(__name__)
+
+
 class SchemaState(TypedDict):
     db_uri: str
-    db_dialect: Literal["sqlite", "postgresql"]
+    db_dialect: str  # sqlite | postgresql | mysql (see core/dialects.py)
     db_path: Optional[str]
     include_tables: Optional[List[str]]
     schema: Optional[Dict[str, List[str]]]
@@ -35,4 +40,4 @@ schema_graph_builder.add_edge("schema_node", END)
 # Compile the schema graph
 schema_app = schema_graph_builder.compile()
 
-print("[SchemaGraph] Schema extraction graph compiled successfully.")
+logger.debug("Schema extraction graph compiled.")

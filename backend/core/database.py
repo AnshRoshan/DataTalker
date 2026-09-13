@@ -3,15 +3,12 @@
 
 import os
 import hashlib
-from pathlib import Path
 from typing import Optional, Tuple
 from fastapi import HTTPException
 
-from .config import SUPPORTED_DIALECTS
+from fastapi import HTTPException
 
-# db_path is confined to this directory (defaults to backend/, which ships the sample DBs).
-# Override with the DATATALKER_DB_DIR env var to point at your own data directory.
-_DEFAULT_DB_DIR = str(Path(__file__).resolve().parent.parent)
+from .settings import get_settings
 
 
 def is_absolute_path(path: str) -> bool:
@@ -19,8 +16,8 @@ def is_absolute_path(path: str) -> bool:
     if not path:
         return False
     
-    # Check for Windows absolute paths (C:\, D:\, etc.)
-    if len(path) >= 3 and path[1:3] == ":\\" and path[0].isalpha():
+    # Check for Windows absolute paths (C:\, D:\, C:/, D:/ — both separators)
+    if len(path) >= 3 and path[1] == ":" and path[0].isalpha() and path[2] in "\\/":
         return True
     
     # Check for Unix/Linux absolute paths (starting with /)
@@ -46,7 +43,7 @@ def validate_database_path(db_path: str) -> str:
         )
 
     real = os.path.realpath(db_path)
-    base = os.path.realpath(os.getenv("DATATALKER_DB_DIR", _DEFAULT_DB_DIR))
+    base = os.path.realpath(get_settings().db_dir)
     try:
         inside = os.path.commonpath([base, real]) == base
     except ValueError:
@@ -70,16 +67,19 @@ def parse_connection_string(connection_string: str) -> Tuple[str, str, Optional[
     elif connection_string.startswith(("postgresql://", "postgres://")):
         # PostgreSQL connection string
         return connection_string, "postgresql", None
+    elif connection_string.startswith(("mysql+pymysql://", "mysql://")):
+        # MySQL connection string (pymysql driver; EC-03)
+        return connection_string, "mysql", None
     else:
         raise HTTPException(
             status_code=400,
-            detail="Unsupported connection string format. Supported: sqlite:///path/to/file.db, postgresql://user:pass@host:port/dbname",
+            detail="Unsupported connection string format. Supported: sqlite:///path/to/file.db, postgresql://user:pass@host:port/dbname, mysql://user:pass@host:port/dbname",
         )
 
 
 def is_database_connection_url(url: str) -> bool:
     """Check if URL is a database connection string rather than a file download URL."""
-    return url.startswith(("postgresql://", "postgres://", "sqlite:///"))
+    return url.startswith(("postgresql://", "postgres://", "sqlite:///", "mysql+pymysql://", "mysql://"))
 
 
 def generate_database_hash(db_uri: str, db_path: Optional[str] = None) -> str:
@@ -100,9 +100,10 @@ def generate_database_hash(db_uri: str, db_path: Optional[str] = None) -> str:
 
 def validate_database_dialect(dialect: str) -> str:
     """Validate database dialect."""
-    if dialect not in SUPPORTED_DIALECTS:
+    supported = get_settings().supported_dialects
+    if dialect not in supported:
         raise HTTPException(
             status_code=400,
-            detail=f"Unsupported database dialect: {dialect}. Supported: {', '.join(SUPPORTED_DIALECTS)}"
+            detail=f"Unsupported database dialect: {dialect}. Supported: {', '.join(supported)}"
         )
     return dialect

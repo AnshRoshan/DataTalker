@@ -393,6 +393,18 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, isUser, onFollowUpCl
                             !message.answer.includes('|') && // Don't show results table if answer already contains a table
                             <ResultsTable results={message.results} />}
 
+                        {/* Truncation notice (FE: results polish) */}
+                        {!message.isTyping && message.results_truncated && (
+                            <div className="mt-3 flex items-center text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                                <i className="fas fa-info-circle mr-2 text-amber-500"></i>
+                                <span>
+                                    Results truncated
+                                    {typeof message.row_cap === 'number' ? ` — only the first ${message.row_cap} rows were kept` : ''}.
+                                    Download the CSV to save what is shown.
+                                </span>
+                            </div>
+                        )}
+
                         {/* Follow-up Questions - only for latest message */}
                         {onFollowUpClick && message.follow_up_questions && message.follow_up_questions.length > 0 && (
                             <div className="mt-4 pt-4 border-t border-gray-100">

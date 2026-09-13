@@ -4,6 +4,7 @@
 import os
 import tempfile
 from agents.db_executor import DBExecutorAgent
+from core.engines import dispose_all
 
 HOSPITAL = "sqlite:///" + os.path.abspath("hospital.db").replace("\\", "/")
 ex = DBExecutorAgent()
@@ -30,6 +31,7 @@ try:
     r = run("sqlite:///" + tmp.name.replace("\\", "/"), "CREATE TABLE _pwn (a INTEGER)")
     assert r["sql_executed"] is False, r
 finally:
+    dispose_all()  # engines are pooled now; release the file so Windows can unlink it
     os.unlink(tmp.name)
 
 # a failing query returns a GENERIC error — the SQL / table names must not leak to the user

@@ -1,8 +1,10 @@
 # graphs/query_graph.py
 """Query processing graph using LangGraph."""
 
+import logging
+
 from langgraph.graph import StateGraph, END
-from typing import TypedDict, Optional, List, Dict, Any, Literal
+from typing import TypedDict, Optional, List, Dict, Any
 
 # Import agent classes
 from agents.sql_writer import SQLWriterAgent
@@ -12,12 +14,17 @@ from agents.answer import AnswerFormatterAgent
 from agents.fallback import FallbackAgent
 from agents.sql_retry import SQLRetryAgent
 
+logger = logging.getLogger(__name__)
+
 
 class QueryState(TypedDict):
     question: str
     db_uri: str
-    db_dialect: Literal["sqlite", "postgresql"]
+    db_dialect: str  # sqlite | postgresql | mysql (see core/dialects.py)
     db_path: Optional[str]
+    history: Optional[List[Dict[str, Any]]]  # prior turns (question/answer/sql), most recent last
+    masked_columns: Optional[List[str]]  # governance 'table.column' entries (EC-05)
+    governance_note: Optional[str]  # prompt note listing restricted columns
     include_tables: Optional[List[str]]
     schema: Optional[Dict[str, List[str]]]
     detailed_schema: Optional[List[Dict[str, Any]]]
@@ -29,6 +36,8 @@ class QueryState(TypedDict):
     unsafe_sql_attempt: Optional[str]
     results: Optional[List[Dict[str, Any]] | str]
     sql_executed: Optional[bool]
+    results_truncated: Optional[bool]
+    row_cap: Optional[int]
     affected_rows: Optional[int]
     answer: Optional[str]
     follow_up_questions: Optional[List[str]]
@@ -62,30 +71,30 @@ query_graph_builder.set_entry_point("writer_node")
 
 # Define routing logic
 def route_after_writer(state: QueryState):
-    print("[QueryGraph] Routing after writer...")
+    logger.debug("Routing after writer...")
     if state.get("error"):  # Check for LLM errors propagated by writer
-        print("[QueryGraph] Writer error detected, routing to formatter.")
+        logger.debug("Writer error detected, routing to formatter.")
         return "formatter_node"
     elif state.get("sql_needed"):
-        print("[QueryGraph] SQL needed, routing to validator.")
+        logger.debug("SQL needed, routing to validator.")
         return "validator_node"
     else:
-        print("[QueryGraph] No SQL needed, routing to formatter.")
+        logger.debug("No SQL needed, routing to formatter.")
         return "formatter_node"
 
 
 def route_after_validator(state: QueryState):
-    print("[QueryGraph] Routing after validator...")
+    logger.debug("Routing after validator...")
     if state.get("is_safe"):
-        print("[QueryGraph] SQL is safe, routing to executor.")
+        logger.debug("SQL is safe, routing to executor.")
         return "executor_node"
     else:
-        print("[QueryGraph] SQL is unsafe, routing to fallback.")
+        logger.debug("SQL is unsafe, routing to fallback.")
         return "fallback_node"
 
 
 def route_after_executor(state: QueryState):
-    print("[QueryGraph] Routing after executor...")
+    logger.debug("Routing after executor...")
     results = state.get("results", [])
     sql_executed = state.get("sql_executed", False)
     retry_count = state.get("retry_count")
@@ -112,14 +121,10 @@ def route_after_executor(state: QueryState):
                     pass
 
     if should_retry:
-        print(
-            "[QueryGraph] Execution successful but no meaningful results, routing to retry."
-        )
+        logger.debug("Execution successful but no meaningful results, routing to retry.")
         return "retry_node"
     else:
-        print(
-            "[QueryGraph] Execution complete or max retries reached, routing to formatter."
-        )
+        logger.debug("Execution complete or max retries reached, routing to formatter.")
         return "formatter_node"
 
 
@@ -136,4 +141,4 @@ query_graph_builder.add_edge("formatter_node", END)
 # Compile the query graph
 query_app = query_graph_builder.compile()
 
-print("[QueryGraph] Query processing graph compiled successfully.")
+logger.debug("Query processing graph compiled.")

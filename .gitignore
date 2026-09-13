@@ -1,3 +1,9 @@
 # Added by code-review-graph
 .code-review-graph/
 .tokensave
+
+# Video agent cache
+.video_agent/
+
+# Runtime logs
+backend/logs/

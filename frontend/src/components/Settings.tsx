@@ -1,8 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 interface SettingsProps {
     isOpen: boolean;
     onClose: () => void;
+    apiUrl: string;
+    apiKey: string;
+    onSave: (settings: { apiUrl: string; apiKey: string }) => void;
 }
 
 interface SettingsState {
@@ -10,19 +13,24 @@ interface SettingsState {
     apiKey: string;
 }
 
-const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
+const Settings: React.FC<SettingsProps> = ({ isOpen, onClose, apiUrl, apiKey, onSave }) => {
     const [settings, setSettings] = useState<SettingsState>({
-        apiUrl: localStorage.getItem('apiUrl') || 'http://127.0.0.1:8000',
-        apiKey: localStorage.getItem('apiKey') || '',
+        apiUrl,
+        apiKey,
     });
+
+    // Resync the draft if the committed settings change while the panel is closed.
+    useEffect(() => {
+        if (!isOpen) {
+            setSettings({ apiUrl, apiKey });
+        }
+    }, [isOpen, apiUrl, apiKey]);
 
     const [testingConnection, setTestingConnection] = useState(false);
     const [connectionStatus, setConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
     const handleSave = () => {
-        Object.entries(settings).forEach(([key, value]) => {
-            localStorage.setItem(key, value.toString());
-        });
+        onSave(settings);
         onClose();
         showNotification('Settings saved successfully!');
     };
@@ -41,7 +49,7 @@ const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
             } else {
                 setConnectionStatus('error');
             }
-        } catch (error) {
+        } catch {
             setConnectionStatus('error');
         } finally {
             setTestingConnection(false);

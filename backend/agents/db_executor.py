@@ -1,19 +1,22 @@
 # agents/db_executor.py
+import logging
+from typing import Any, Dict
+
 import sqlalchemy
-from typing import Dict, Any
 from sqlalchemy import exc as sqlalchemy_exc
+
+from core.engines import get_engine
+from core.settings import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 class DBExecutorAgent:
     def __call__(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Execute a single validated read-only SQL statement and return its rows."""
-        print(
-            "[DBExecutorAgent] received state:",
-            {
-                k: v
-                for k, v in state.items()
-                if k not in ["detailed_schema", "schema_description", "results"]
-            },
+        logger.debug(
+            "state keys: %s",
+            sorted(k for k in state if k not in ("detailed_schema", "schema_description", "results")),
         )
 
         sql = state.get("sql")
@@ -32,35 +35,58 @@ class DBExecutorAgent:
             return {**state, "error": "Only a single read-only statement may be executed.", "sql_executed": False}
         statement = statements[0]
 
-        engine = None
+        settings = get_settings()
+        max_rows = settings.max_query_rows
+
         try:
-            engine = sqlalchemy.create_engine(db_uri)
+            # ponytail: pooled engine (PR-03) — created once per db_uri, disposed via
+            # TTL/LRU in core.engines, never per request.
+            engine = get_engine(db_uri)
             with engine.connect() as connection:
-                if db_dialect == "sqlite":
-                    # ponytail: SQLite native read-only pin — blocks any write even if the
-                    # guard is bypassed. Postgres relies on the guard + a least-privilege role.
-                    connection.exec_driver_sql("PRAGMA query_only = ON")
+                if db_dialect == "postgresql":
+                    # Transaction-scoped timeout: expires when the pooled connection's
+                    # transaction ends, so it never leaks across requests (SEC-08).
+                    connection.exec_driver_sql(
+                        f"SET LOCAL statement_timeout = '{settings.statement_timeout_seconds}s'"
+                    )
+                elif db_dialect == "mysql":
+                    # MySQL's max_execution_time is session-level and SELECT-only; set it
+                    # for the whole session (matches the intent — every query bounded).
+                    connection.exec_driver_sql(
+                        f"SET SESSION MAX_EXECUTION_TIME={settings.statement_timeout_seconds * 1000}"
+                    )
+                # SQLite is exempt: it has no server-side statement timeout, but it is
+                # file-local, pinned read-only (PRAGMA query_only via core.engines), and
+                # queries there are bounded by the row cap below.
                 result_proxy = connection.execute(sqlalchemy.text(statement))
-                results = (
-                    [dict(row) for row in result_proxy.mappings().all()]
-                    if result_proxy.returns_rows
-                    else []
-                )
-            print(f"[DBExecutorAgent] statement returned {len(results)} row(s).")
+                if result_proxy.returns_rows:
+                    # Hard server-side row cap (EC-10): fetch one extra row to detect
+                    # truncation without pulling the whole result set into memory.
+                    rows = result_proxy.mappings().fetchmany(max_rows + 1)
+                    truncated = len(rows) > max_rows
+                    results = [dict(row) for row in rows[:max_rows]]
+                else:
+                    truncated = False
+                    results = []
+            if truncated:
+                logger.info("statement hit the row cap (%d rows); results truncated", max_rows)
+            else:
+                logger.info("statement returned %d row(s).", len(results))
             state.pop("error", None)
-            return {**state, "results": results, "sql_executed": True}
+            return {
+                **state,
+                "results": results,
+                "sql_executed": True,
+                "results_truncated": truncated,
+                "row_cap": max_rows,
+            }
 
         except sqlalchemy_exc.SQLAlchemyError as e:
-            # ponytail: full detail to the server log only; the client gets a generic message
+            # Full detail to the server log only; the client gets a generic message
             # (the raw error embeds the SQL and can leak schema/paths — SEC-05/CORR-4).
-            print(f"[DBExecutorAgent] SQLAlchemyError ({type(e).__name__}) on sql {sql}: {e}")
+            logger.warning("SQLAlchemyError (%s) on statement: %s", type(e).__name__, e)
             return {**state, "results": None, "sql_executed": False, "error": "The query could not be executed."}
 
         except Exception as e:
-            import traceback
-
-            print(f"[DBExecutorAgent] Execution error ({type(e).__name__}) on sql {sql}: {e}\n{traceback.format_exc()}")
+            logger.warning("Execution error (%s) on statement: %s", type(e).__name__, e, exc_info=True)
             return {**state, "results": None, "sql_executed": False, "error": "The query could not be executed."}
-        finally:
-            if engine:
-                engine.dispose()

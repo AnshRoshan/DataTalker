@@ -125,11 +125,20 @@ def _complete_with_retries(
 
 
 def generate_sql_or_response(
-    schema: str, question: str, db_dialect: Literal["sqlite", "postgresql"] = "sqlite"
+    schema: str,
+    question: str,
+    db_dialect: Literal["sqlite", "postgresql", "mysql"] | str = "sqlite",
+    extra_context: str = "",
 ) -> Dict[str, Any]:
-    """NL question + schema -> {"sql"} | {"response"} | {"error", "retryable"}."""
+    """NL question + schema -> {"sql"} | {"response"} | {"error", "retryable"}.
+
+    extra_context (governance notes, semantic layer, chat history) is appended
+    to the user message after the schema.
+    """
     system = build_sql_instruction(db_dialect)
     user = f"Schema:\n```\n{schema}\n```\n\nQuestion: {question}"
+    if extra_context:
+        user += f"\n\n{extra_context}"
     return _complete_with_retries(system, user, _parse_sql_response)
 
 

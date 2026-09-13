@@ -1,5 +1,8 @@
 # agents/fallback.py
+import logging
 from typing import Dict, Any
+
+logger = logging.getLogger(__name__)
 
 
 class FallbackAgent:
@@ -8,9 +11,9 @@ class FallbackAgent:
         Handles cases where SQL validation fails.
         Provides a user-friendly message explaining the issue.
         """
-        print(
-            "[FallbackAgent] received state:",
-            {k: v for k, v in state.items() if k != "detailed_schema"},
+        logger.debug(
+            "state keys: %s",
+            sorted(k for k in state if k != "detailed_schema"),
         )
 
         # Get information from the state
@@ -35,7 +38,7 @@ class FallbackAgent:
 
         response += "Please try rephrasing your question, ensuring it focuses on reading data rather than modifying it."
 
-        print(f"[FallbackAgent] Generated fallback response: {response}")
+        logger.info("Generated fallback response (reason: %s).", reason)
 
         # Update state for the formatter/final output
         # Clear potentially confusing keys from previous steps

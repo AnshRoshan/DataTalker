@@ -10,31 +10,18 @@ only wastes retries):
 """
 from typing import Literal
 
+from core.dialects import get_dialect_prompt
+
 
 def build_sql_instruction(
-    db_dialect: Literal["sqlite", "postgresql"] = "sqlite",
+    db_dialect: Literal["sqlite", "postgresql", "mysql"] | str = "sqlite",
 ) -> str:
-    """Generates the system instruction tailored to the specified SQL dialect."""
-    dialect_specific_context = ""
-    dialect_specific_practices = ""
+    """Generates the system instruction tailored to the specified SQL dialect.
 
-    if db_dialect == "sqlite":
-        dialect_specific_context = "You are working with SQLite databases."
-        dialect_specific_practices = "- Ensure all SQL is valid SQLite syntax.\n"
-    elif db_dialect == "postgresql":
-        dialect_specific_context = "You are working with PostgreSQL databases."
-        dialect_specific_practices = (
-            "- Use standard SQL syntax compatible with PostgreSQL.\n"
-            "- Pay attention to PostgreSQL-specific functions and data types where applicable.\n"
-            "- Use double quotes for identifiers (table/column names) only when necessary (e.g., spaces or special characters), otherwise use standard unquoted names.\n"
-            "- Use single quotes for string literals.\n"
-            "- Ensure all SQL is valid PostgreSQL syntax.\n"
-        )
-    else:
-        dialect_specific_context = (
-            "You are working with a SQL database (defaulting to SQLite behavior)."
-        )
-        dialect_specific_practices = "- Ensure all SQL is valid SQLite syntax.\n"
+    Per-dialect text comes from the registry in core/dialects.py (EC-03); the
+    SQLite/PostgreSQL strings are unchanged from the pre-registry version.
+    """
+    dialect_specific_context, dialect_specific_practices = get_dialect_prompt(db_dialect)
 
     return (
         f"You are an expert SQL assistant for database queries. Your role is to analyze user questions and determine the appropriate response based on the database schema.\n\n"

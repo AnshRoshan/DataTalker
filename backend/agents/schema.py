@@ -1,19 +1,23 @@
 # agents/schema.py
+import logging
 import os
 import re
 import time
 import json  # For physical cache
 import hashlib  # For creating safe filenames from paths/URIs
 from pathlib import Path  # For easier path manipulation
-from cachetools import LRUCache
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Set
 import sqlalchemy
 from sqlalchemy.sql import text
 from sqlalchemy.engine.url import make_url  # To parse database URIs
 from sqlalchemy.sql.elements import TextClause
 from sqlalchemy.sql.schema import FetchedValue  # Import FetchedValue
 
-from core.config import CACHE_EXPIRY_SECONDS
+from core.cache import get_agent_cached, set_agent_cached
+from core.engines import get_engine
+from core.settings import get_settings
+
+logger = logging.getLogger(__name__)
 
 # --- Configuration ---
 DEFAULT_PHYSICAL_CACHE_DIR = Path(os.path.expanduser("~")) / ".text_to_sql_schema_cache"
@@ -34,9 +38,8 @@ def _is_cache_fresh(cached: Dict[str, Any], current_mod_time: Optional[float], t
     return saved_at is not None and (time.time() - saved_at) <= ttl
 
 
-# Initialize a first-level in-memory cache
-# Key: generated_cache_key, Value: {schema_data, mod_time (for SQLite files)}
-in_memory_schema_cache = LRUCache(maxsize=10)
+# In-memory cache layer lives in core/cache.py (agent_cache) so /schema/cache
+# GET/DELETE and this agent share one owner of cache state (ARCH-08).
 
 
 class SchemaAgent:
@@ -46,9 +49,7 @@ class SchemaAgent:
         )
         # Ensure the physical cache directory exists
         self.physical_cache_path.mkdir(parents=True, exist_ok=True)
-        print(
-            f"[SchemaAgent] Using physical cache directory: {self.physical_cache_path}"
-        )
+        logger.info("Using physical cache directory: %s", self.physical_cache_path)
 
     def _get_db_modification_time(self, db_path_str: str) -> Optional[float]:
         """Get the last modification time of the database file."""
@@ -104,8 +105,8 @@ class SchemaAgent:
             else:  # Fallback if database name can't be parsed
                 key_base = f"{db_dialect}_unknown_db_{hashlib.md5(db_uri_str.encode()).hexdigest()[:8]}"
         except Exception as e:
-            print(
-                f"[SchemaAgent] Warning: Could not parse URI '{db_uri_str}' for cache key generation: {e}. Using full URI hash."
+            logger.debug(
+                "Could not parse URI for cache key generation (%s); using full URI hash.", e
             )
             key_base = hashlib.md5(db_uri_str.encode()).hexdigest()
 
@@ -135,15 +136,15 @@ class SchemaAgent:
             with open(filepath, "r") as f:
                 cached_content = json.load(f)
 
-            if not _is_cache_fresh(cached_content, current_mod_time_for_sqlite, CACHE_EXPIRY_SECONDS):
-                print(f"[SchemaAgent] Physical cache stale for: {filepath.name}")
+            if not _is_cache_fresh(cached_content, current_mod_time_for_sqlite, get_settings().cache_ttl_seconds):
+                logger.debug("Physical cache stale for: %s", filepath.name)
                 return None
 
-            print(f"[SchemaAgent] Loaded from physical cache: {filepath.name}")
+            logger.debug("Loaded from physical cache: %s", filepath.name)
             return cached_content.get("schema_data")  # Return only the schema_data part
         except (json.JSONDecodeError, IOError, KeyError) as e:
-            print(
-                f"[SchemaAgent] Error loading or validating physical cache file {filepath}: {e}. Invalidating."
+            logger.debug(
+                "Error loading or validating physical cache file %s: %s. Invalidating.", filepath, e
             )
             try:
                 os.remove(filepath)  # Remove corrupted/invalid cache file
@@ -165,19 +166,22 @@ class SchemaAgent:
 
             with open(filepath, "w") as f:
                 json.dump(data_to_store, f, indent=2)
-            print(f"[SchemaAgent] Saved to physical cache: {filepath.name}")
+            logger.debug("Saved to physical cache: %s", filepath.name)
         except IOError as e:
-            print(f"[SchemaAgent] Error saving to physical cache file {filepath}: {e}")
+            logger.debug("Error saving to physical cache file %s: %s", filepath, e)
         except TypeError as e:  # Catch specific JSON serialization errors
-            print(
-                f"[SchemaAgent] JSON Serialization Error saving to physical cache file {filepath}: {e}"
-            )
+            logger.debug("JSON Serialization Error saving to physical cache file %s: %s", filepath, e)
             # Optionally, re-raise or handle more gracefully
             raise
 
+    @staticmethod
     def _format_schema_for_llm(
-        self, detailed_schema: List[Dict[str, Any]], db_dialect: str
+        detailed_schema: List[Dict[str, Any]],
+        db_dialect: str,
+        masked_columns: Optional[Set[str]] = None,
     ) -> str:
+        """Render the schema for the LLM. masked_columns ('table.column') are
+        still listed by name but flagged so the model knows not to select them."""
         if not detailed_schema:
             return f"DATABASE SCHEMA INFORMATION ({db_dialect.upper()}): No tables selected or available.\n"
 
@@ -253,7 +257,12 @@ class SchemaAgent:
                         type_clarification = " (likely timestamp)"
                     elif re.match(r"^\d{4}-\d{2}-\d{2}$", first_sample):
                         type_clarification = " (likely date)"
-                formatted += f"  - {col_name}: {col_type_str}{type_clarification}{pk_indicator}{unique_indicator}{null_indicator}{default_info}{sample_values_str}\n"
+                masked_flag = (
+                    " [MASKED — must not appear in SELECT output]"
+                    if masked_columns and f"{table_name}.{col_name}" in masked_columns
+                    else ""
+                )
+                formatted += f"  - {col_name}: {col_type_str}{type_clarification}{pk_indicator}{unique_indicator}{null_indicator}{default_info}{sample_values_str}{masked_flag}\n"
             if foreign_keys:
                 formatted += "  FOREIGN KEYS:\n"
                 for fk in foreign_keys:
@@ -270,10 +279,10 @@ class SchemaAgent:
     def _extract_schema_sqlalchemy(
         self, db_uri: str, db_dialect: str
     ) -> Dict[str, Any]:
-        print(
-            f"[SchemaAgent] Extracting schema via SQLAlchemy from: {db_uri} (Dialect: {db_dialect})"
-        )
-        engine = sqlalchemy.create_engine(db_uri)
+        logger.debug("Extracting schema via SQLAlchemy (dialect: %s)", db_dialect)
+        # Pooled engine (PR-03) — no per-extraction create/dispose. SQLite
+        # connections are pinned read-only by core.engines' connect listener.
+        engine = get_engine(db_uri)
         inspector = sqlalchemy.inspect(engine)
         metadata = sqlalchemy.MetaData()
 
@@ -297,9 +306,7 @@ class SchemaAgent:
                     )
                     row_count = result.scalar_one_or_none()
             except Exception as count_exc:
-                print(
-                    f"[SchemaAgent] Warning: Could not get row count for table {table_name}: {count_exc}"
-                )
+                logger.debug("Could not get row count for table %s: %s", table_name, count_exc)
             column_details = []
             reflected_table = None
             try:
@@ -307,9 +314,7 @@ class SchemaAgent:
                     table_name, metadata, autoload_with=engine
                 )
             except Exception as reflect_exc:
-                print(
-                    f"[SchemaAgent] Warning: Could not reflect table {table_name} for sample data: {reflect_exc}"
-                )
+                logger.debug("Could not reflect table %s for sample data: %s", table_name, reflect_exc)
 
             for col_meta in columns_meta:
                 # --- MODIFICATION START ---
@@ -323,8 +328,9 @@ class SchemaAgent:
                     col_default_value, (str, int, float, bool, list, dict)
                 ):
                     # Fallback for other complex types that might not be primitives or common serializable types
-                    print(
-                        f"[SchemaAgent] Warning: Converting complex default value of type {type(col_default_value)} to string for column {table_name}.{col_meta['name']}."
+                    logger.debug(
+                        "Converting complex default value of type %s to string for column %s.%s.",
+                        type(col_default_value), table_name, col_meta["name"],
                     )
                     serializable_default = str(col_default_value)
                 else:
@@ -383,8 +389,8 @@ class SchemaAgent:
                                 )
                             col_info["sample_values"] = processed_samples
                     except Exception as sample_exc:
-                        print(
-                            f"[SchemaAgent] Warning: Could not get sample values for {table_name}.{col_meta['name']}: {sample_exc}"
+                        logger.debug(
+                            "Could not get sample values for %s.%s: %s", table_name, col_meta["name"], sample_exc
                         )
                 column_details.append(col_info)
             table_data = {
@@ -395,17 +401,12 @@ class SchemaAgent:
             if row_count is not None:
                 table_data["row_count"] = row_count
             detailed_schema.append(table_data)
-        engine.dispose()
         return {"detailed_schema": detailed_schema}
 
     def __call__(self, state: dict) -> dict:
-        print(
-            "[SchemaAgent] received state:",
-            {
-                k: v
-                for k, v in state.items()
-                if k not in ["detailed_schema", "schema_description"]
-            },
+        logger.debug(
+            "state keys: %s",
+            sorted(k for k in state if k not in ("detailed_schema", "schema_description")),
         )
         db_uri = state.get("db_uri")
         db_dialect = state.get("db_dialect")
@@ -428,14 +429,15 @@ class SchemaAgent:
                     sqlite_path_for_mod_time
                 )
 
+            ttl = get_settings().cache_ttl_seconds
             full_schema_data = None  # Initialize
-            cached_in_memory = in_memory_schema_cache.get(cache_key)
+            cached_in_memory = get_agent_cached(cache_key)
             if cached_in_memory:
-                if _is_cache_fresh(cached_in_memory, current_sqlite_mod_time, CACHE_EXPIRY_SECONDS):
-                    print(f"[SchemaAgent] Using in-memory cached schema for: {cache_key}")
+                if _is_cache_fresh(cached_in_memory, current_sqlite_mod_time, ttl):
+                    logger.debug("Using in-memory cached schema for: %s", cache_key)
                     full_schema_data = cached_in_memory["schema_data"]
                 else:
-                    print(f"[SchemaAgent] In-memory cache stale for: {cache_key}")
+                    logger.debug("In-memory cache stale for: %s", cache_key)
 
             if full_schema_data is None:  # Check if not loaded from in-memory cache
                 physical_cache_file = self._get_physical_cache_filepath(cache_key)
@@ -445,14 +447,11 @@ class SchemaAgent:
 
                 if loaded_from_physical:
                     full_schema_data = loaded_from_physical
-                    in_memory_schema_cache[cache_key] = {
-                        "schema_data": full_schema_data,
-                        "mod_time": current_sqlite_mod_time,
-                        "saved_at": time.time(),
-                    }
+                    set_agent_cached(cache_key, full_schema_data, current_sqlite_mod_time)
                 else:
-                    print(
-                        f"[SchemaAgent] Cache miss (in-memory & physical) or invalidation for: {cache_key}. Extracting schema."
+                    logger.debug(
+                        "Cache miss (in-memory & physical) or invalidation for: %s. Extracting schema.",
+                        cache_key,
                     )
                     full_schema_data = self._extract_schema_sqlalchemy(
                         db_uri, db_dialect
@@ -460,11 +459,7 @@ class SchemaAgent:
                     self._save_to_physical_cache(
                         physical_cache_file, full_schema_data, current_sqlite_mod_time
                     )
-                    in_memory_schema_cache[cache_key] = {
-                        "schema_data": full_schema_data,
-                        "mod_time": current_sqlite_mod_time,
-                        "saved_at": time.time(),
-                    }
+                    set_agent_cached(cache_key, full_schema_data, current_sqlite_mod_time)
 
             final_detailed_schema_to_format = full_schema_data.get(
                 "detailed_schema", []
@@ -488,12 +483,8 @@ class SchemaAgent:
             }
 
         except Exception as e:
-            import traceback
-
-            error_message = (
-                f"SchemaAgent processing failed: {str(e)}\n{traceback.format_exc()}"
-            )
-            print(f"[SchemaAgent] Error: {error_message}")
+            # Full traceback to the server log only; callers surface a generic error.
+            logger.warning("Schema extraction failed: %s", e, exc_info=True)
             state.pop("detailed_schema", None)
             state.pop("schema_description", None)
-            return {**state, "error": error_message}
+            return {**state, "error": f"SchemaAgent processing failed: {str(e)}"}

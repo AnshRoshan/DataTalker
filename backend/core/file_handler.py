@@ -2,6 +2,7 @@
 """File upload and download handling utilities."""
 
 import os
+import logging
 import socket
 import ipaddress
 import tempfile
@@ -10,7 +11,9 @@ from pathlib import Path
 from urllib.parse import urlparse
 from fastapi import HTTPException, UploadFile
 
-from .config import ALLOWED_EXTENSIONS, REQUEST_TIMEOUT, TEMP_FILE_PREFIX, MAX_FILE_SIZE
+from .settings import get_settings
+
+logger = logging.getLogger(__name__)
 
 _CHUNK = 65536
 
@@ -19,17 +22,19 @@ def validate_file_extension(filename: str) -> bool:
     """Validate file extension."""
     if not filename:
         return False
-    return Path(filename).suffix.lower() in ALLOWED_EXTENSIONS
+    return Path(filename).suffix.lower() in get_settings().allowed_extensions_list
 
 
 def save_uploaded_file(db_file: UploadFile) -> str:
     """Save an uploaded DB to a unique temp file, enforcing the size cap (PR-11, CORR-2)."""
+    settings = get_settings()
+    allowed = settings.allowed_extensions_list
     if not db_file.filename:
         raise HTTPException(status_code=400, detail="No file selected")
     if not validate_file_extension(db_file.filename):
-        raise HTTPException(status_code=400, detail=f"Invalid file type. Allowed: {', '.join(ALLOWED_EXTENSIONS)}")
+        raise HTTPException(status_code=400, detail=f"Invalid file type. Allowed: {', '.join(allowed)}")
 
-    fd, temp_file = tempfile.mkstemp(prefix=f"{TEMP_FILE_PREFIX}uploaded_", suffix=Path(db_file.filename).suffix.lower())
+    fd, temp_file = tempfile.mkstemp(prefix=f"{settings.temp_file_prefix}uploaded_", suffix=Path(db_file.filename).suffix.lower())
     try:
         written = 0
         with os.fdopen(fd, "wb") as buffer:
@@ -38,7 +43,7 @@ def save_uploaded_file(db_file: UploadFile) -> str:
                 if not chunk:
                     break
                 written += len(chunk)
-                if written > MAX_FILE_SIZE:
+                if written > settings.max_file_size_bytes:
                     raise HTTPException(status_code=413, detail="Uploaded file exceeds the size limit.")
                 buffer.write(chunk)
         return temp_file
@@ -47,7 +52,7 @@ def save_uploaded_file(db_file: UploadFile) -> str:
         raise
     except Exception as e:
         cleanup_temp_file(temp_file)
-        print(f"[file_handler] upload error: {e!r}")
+        logger.error("upload error: %r", e)
         raise HTTPException(status_code=500, detail="Failed to save the uploaded file.")
 
 
@@ -79,9 +84,9 @@ def download_database_from_url(db_url: str) -> str:
     if not safe:
         raise HTTPException(status_code=400, detail=reason)
 
-    fd, temp_file = tempfile.mkstemp(prefix=f"{TEMP_FILE_PREFIX}downloaded_", suffix=".db")
+    fd, temp_file = tempfile.mkstemp(prefix=f"{get_settings().temp_file_prefix}downloaded_", suffix=".db")
     try:
-        with requests.get(db_url, timeout=REQUEST_TIMEOUT, stream=True, allow_redirects=False) as response:
+        with requests.get(db_url, timeout=get_settings().request_timeout_seconds, stream=True, allow_redirects=False) as response:
             if 300 <= response.status_code < 400:
                 raise HTTPException(status_code=400, detail="Redirects are not allowed for database URLs.")
             response.raise_for_status()
@@ -89,7 +94,7 @@ def download_database_from_url(db_url: str) -> str:
             with os.fdopen(fd, "wb") as f:
                 for chunk in response.iter_content(chunk_size=_CHUNK):
                     written += len(chunk)
-                    if written > MAX_FILE_SIZE:
+                    if written > get_settings().max_file_size_bytes:
                         raise HTTPException(status_code=413, detail="Downloaded file exceeds the size limit.")
                     f.write(chunk)
         return temp_file
@@ -98,11 +103,11 @@ def download_database_from_url(db_url: str) -> str:
         raise
     except requests.RequestException as e:
         cleanup_temp_file(temp_file)
-        print(f"[file_handler] download error: {e!r}")
+        logger.warning("download error: %r", e)
         raise HTTPException(status_code=400, detail="Failed to download the database from the URL.")
     except Exception as e:
         cleanup_temp_file(temp_file)
-        print(f"[file_handler] download error: {e!r}")
+        logger.warning("download error: %r", e)
         raise HTTPException(status_code=500, detail="Error processing the database URL.")
 
 
@@ -112,4 +117,4 @@ def cleanup_temp_file(file_path: str) -> None:
         try:
             os.unlink(file_path)
         except Exception as e:
-            print(f"Warning: Failed to cleanup temporary file {file_path}: {e}")
+            logger.debug("Failed to cleanup temporary file %s: %s", file_path, e)

@@ -5,6 +5,9 @@ import ChatMessage from './ChatMessage';
 interface ChatAreaProps {
     chatHistory: ChatMessageData[];
     onFollowUpClick?: (question: string) => void;
+    isLoading?: boolean;
+    onCancelRequest?: () => void;
+    onClearChat?: () => void;
 }
 
 const WelcomeMessage: React.FC = () => (
@@ -39,7 +42,7 @@ const WelcomeMessage: React.FC = () => (
     </div>
 );
 
-const ChatArea: React.FC<ChatAreaProps> = ({ chatHistory, onFollowUpClick }) => {
+const ChatArea: React.FC<ChatAreaProps> = ({ chatHistory, onFollowUpClick, isLoading, onCancelRequest, onClearChat }) => {
     const messagesEndRef = React.useRef<HTMLDivElement>(null);
 
     React.useEffect(() => {
@@ -52,21 +55,45 @@ const ChatArea: React.FC<ChatAreaProps> = ({ chatHistory, onFollowUpClick }) => 
                 <WelcomeMessage />
             ) : (
                 <div className="max-w-4xl mx-auto p-6 space-y-6">
+                    {onClearChat && (
+                        <div className="flex justify-end">
+                            <button
+                                onClick={onClearChat}
+                                className="px-3 py-1.5 rounded-lg text-xs text-gray-400 hover:text-red-600 hover:bg-red-50 transition-all duration-200 flex items-center"
+                                aria-label="Clear chat history"
+                            >
+                                <i className="fas fa-trash-alt mr-1.5"></i>
+                                Clear chat
+                            </button>
+                        </div>
+                    )}
                     {chatHistory.map((chatItem, index) => {
                         const isLatest = index === chatHistory.length - 1;
                         const shouldShowFollowUp = isLatest && !chatItem.isTyping && onFollowUpClick;
-                        
+
                         return (
                             <div key={chatItem.id} className="space-y-4">
                                 <ChatMessage message={chatItem} isUser={true} />
-                                <ChatMessage 
-                                    message={chatItem} 
-                                    isUser={false} 
+                                <ChatMessage
+                                    message={chatItem}
+                                    isUser={false}
                                     onFollowUpClick={shouldShowFollowUp ? onFollowUpClick : undefined}
                                 />
                             </div>
                         );
                     })}
+                    {isLoading && onCancelRequest && (
+                        <div className="flex justify-center">
+                            <button
+                                onClick={onCancelRequest}
+                                className="px-4 py-2 rounded-xl text-sm text-gray-500 bg-white border border-gray-200 hover:text-red-600 hover:border-red-200 hover:bg-red-50 transition-all duration-200 shadow-sm flex items-center"
+                                aria-label="Cancel request"
+                            >
+                                <i className="fas fa-stop mr-2"></i>
+                                Cancel request
+                            </button>
+                        </div>
+                    )}
                     <div ref={messagesEndRef} />
                 </div>
             )}

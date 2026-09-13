@@ -6,6 +6,8 @@ interface InputAreaProps {
     handleSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
     isLoading: boolean;
     error: string | null;
+    onClearError: () => void;
+    onCancelRequest: () => void;
     apiUrl: string;
 }
 
@@ -15,6 +17,8 @@ const InputArea: React.FC<InputAreaProps> = ({
     handleSubmit,
     isLoading,
     error,
+    onClearError,
+    onCancelRequest,
     apiUrl,
 }) => {
     return (
@@ -25,8 +29,9 @@ const InputArea: React.FC<InputAreaProps> = ({
                         <i className="fas fa-exclamation-triangle mr-3 text-red-500"></i>
                         <span>{error}</span>
                         <button
-                            onClick={() => setUserInput('')}
+                            onClick={onClearError}
                             className="ml-auto text-red-500 hover:text-red-700"
+                            aria-label="Dismiss error"
                         >
                             <i className="fas fa-times"></i>
                         </button>
@@ -54,24 +59,30 @@ const InputArea: React.FC<InputAreaProps> = ({
                             </button>
                         )}
                     </div>
-                    <button
-                        type="submit"
-                        disabled={!userInput.trim() || isLoading}
-                        className={`px-6 py-4 rounded-2xl flex items-center justify-center font-medium ${
-                            !userInput.trim() || isLoading
-                                ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                                : 'bg-gradient-to-r from-blue-600 to-blue-700 text-white hover:from-blue-700 hover:to-blue-800 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5'
-                        } transition-all duration-200`}
-                    >
-                        {isLoading ? (
-                            <i className="fas fa-circle-notch fa-spin text-xl"></i>
-                        ) : (
-                            <>
-                                <i className="fas fa-paper-plane mr-0 sm:mr-2"></i>
-                                <span className="hidden sm:inline">Send</span>
-                            </>
-                        )}
-                    </button>
+                    {isLoading ? (
+                        <button
+                            type="button"
+                            onClick={onCancelRequest}
+                            className="px-6 py-4 rounded-2xl flex items-center justify-center font-medium border-2 border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 transition-all duration-200"
+                            aria-label="Cancel request"
+                        >
+                            <i className="fas fa-stop mr-0 sm:mr-2"></i>
+                            <span className="hidden sm:inline">Cancel</span>
+                        </button>
+                    ) : (
+                        <button
+                            type="submit"
+                            disabled={!userInput.trim()}
+                            className={`px-6 py-4 rounded-2xl flex items-center justify-center font-medium ${
+                                !userInput.trim()
+                                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                    : 'bg-gradient-to-r from-blue-600 to-blue-700 text-white hover:from-blue-700 hover:to-blue-800 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5'
+                            } transition-all duration-200`}
+                        >
+                            <i className="fas fa-paper-plane mr-0 sm:mr-2"></i>
+                            <span className="hidden sm:inline">Send</span>
+                        </button>
+                    )}
                 </form>
 
                 <div className="mt-3 text-xs text-gray-400 flex items-center justify-center">

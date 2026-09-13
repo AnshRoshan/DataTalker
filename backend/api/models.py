@@ -35,6 +35,12 @@ class QueryResponse(BaseModel):
     sql: str
     results: List[Dict[str, Any]]
     follow_up_questions: List[str]
+    # Phase-3 additions (response shape only grows; frontend ignores unknown keys)
+    results_truncated: Optional[bool] = None
+    sql_executed: Optional[bool] = None
+    validator_rejected: Optional[bool] = None
+    latency_ms: Optional[int] = None
+    row_cap: Optional[int] = None
 
 
 class CacheInfo(BaseModel):
@@ -53,6 +59,7 @@ class CacheResponse(BaseModel):
     cached_schemas: List[CacheInfo]
     cache_expiry_seconds: int
     total_cached: int
+    agent_cache_entries: Optional[int] = None  # SchemaAgent in-memory layer (ARCH-08)
 
 
 class ClearCacheResponse(BaseModel):
@@ -65,6 +72,7 @@ class HealthResponse(BaseModel):
     """Response model for health check."""
     status: str
     message: str
+    version: Optional[str] = None
 
 
 class APIInfo(BaseModel):

@@ -14,8 +14,18 @@ dimensions → adversarial verification of every critical/high finding against t
 > (+ FE-02's data half), **ARCH-01/03/05** — each with an assert-based test in `backend/test_*.py`.
 > **⚠️ Phase 2 status update (fixed on branch `phase2-pluggable-llm`):** **EC-01** (pluggable
 > LLM provider) is resolved — see finding below.
-> **Still open:** the rest of the Phase-2 enterprise-fit items, PR-03 pooling,
-> PR-08 readiness, PR-09 rate limiting, ARCH-06 deps, the `print()` sweep, and the frontend (FE-*).
+> **⚠️ Phase 3 status update (fixed on branch `phase3-next-level`, 2026-09-13):** resolved —
+> **PR-03** (pooled engines, `core/engines.py`), **PR-08** (real readiness `/health`),
+> **PR-09** (per-IP rate limiting, `core/ratelimit.py`), **SEC-08/EC-10** (hard row cap +
+> statement timeouts + enforced upload caps), **PR-06** (print() sweep complete),
+> **ARCH-06** (single `uv.lock` source; bogus deps removed), **ARCH-08** (single schema-cache
+> owner, `core/cache.py`), **EC-07** (pydantic-settings, `core/settings.py`), **EC-08**
+> (JSONL audit log, `core/audit.py`), **EC-06/EC-05-lite** (governance: table allowlist +
+> column masking, `core/governance.py`), **EC-03-lite** (MySQL dialect + dialect registry,
+> `core/dialects.py`), **EC-09-lite** (semantic-layer YAML glossary, `core/semantic.py`),
+> and the frontend **FE-01, FE-04, FE-05, FE-06, FE-07, FE-08, FE-09, FE-10** (plus CSV
+> export and `history`-aware multi-turn chat). Multi-tenancy (EC-04), RBAC/RLS beyond
+> masking (EC-05), externalized prompts (EC-02), CORR-8, and async DB/LLM remain open.
 
 ---
 

@@ -1,113 +1,102 @@
 # CLAUDE.md — DataTalker
 
-> Working guide for AI agents and humans. Written from a verified 36-agent audit of the
-> actual code (2026-07-04), not from the aspirational docs. Where this file and
-> `backend/ARCHITECTURE.md` / `backend/ENTERPRISE_TRANSFORMATION_PLAN.md` disagree, **this
-> file is correct** — those docs describe things that were never wired up (see below).
->
-> Full findings + productionization roadmap: **[`docs/CODEBASE_AUDIT.md`](docs/CODEBASE_AUDIT.md)**.
+> Working guide for AI agents and humans. Verified against the actual code after the
+> Phase-3 wave (2026-09-13, branch `phase3-next-level`). Full findings + roadmap:
+> [`docs/CODEBASE_AUDIT.md`](docs/CODEBASE_AUDIT.md) (see the Phase-3 status banner there).
 
 ## What this is
 
 DataTalker is a "talk to your data" app: ask a natural-language question, it reflects a
-database's schema, uses an LLM (Gemini by default; any OpenAI-compatible endpoint via `LLM_*` config) to write SQL, executes it, and returns a
-plain-English answer + the SQL + the result rows. FastAPI backend + React/Vite (TypeScript)
-frontend.
+database's schema, uses an LLM (Gemini by default; any OpenAI-compatible endpoint via
+`LLM_*` config) to write SQL, executes it read-only, and returns a plain-English answer +
+the SQL + the result rows. FastAPI backend + React/Vite (TypeScript) frontend.
 
-**Status: Phase-1 hardened prototype (merged to main).** Still single-tenant and limited to
-two DB dialects (the LLM vendor is pluggable since Phase 2A) — not yet enterprise-*featured*, but now enterprise-*safe*.
-Phase 1 added API-key auth, a read-only single-`SELECT` allowlist on a read-only engine,
-`db_path` confinement + `db_url` SSRF guard, threadpool offload, error/secret sanitization, a
-schema-cache TTL, and structured logging with correlation IDs. See `docs/CODEBASE_AUDIT.md`
-(Phase-1 status banner) for exactly what's fixed vs open.
+**Status: Phase-3 hardened + feature-complete for a single-tenant tool.** Security hardening
+(Phases 0–1) and the pluggable LLM (Phase 2A) landed earlier; Phase 3 added: env-driven
+settings, pooled DB engines, per-IP rate limiting, a hard row cap + statement timeouts, a
+real readiness `/health`, a JSONL audit log, governance-lite (table allowlist + column
+masking), a semantic-layer YAML glossary, MySQL dialect support, and multi-turn chat
+history. All 18 `backend/test_*.py` scripts pass; the full `/chat/` pipeline is verified
+end-to-end (mock LLM) against `backend/hospital.db`.
 
-## ⚠️ Read this first: there are THREE parallel backends. Only ONE runs.
-
-This is the single biggest source of confusion in the repo. ~6× more backend orchestration
-code is **dead** than alive.
-
-| Stack | Entry point | Status | Touch it? |
-|---|---|---|---|
-| **① Live / modular** | `backend/main.py` → `api/` → `services/` → `graphs/` → `agents/` → `llm/` | **This is what actually runs and serves the frontend.** | ✅ All real work happens here |
-| **② "Enterprise"** | `backend/enterprise_app.py`, `enterprise_graph.py`, `enterprise_status.py`, top-level `main_graph.py`, `core/{auth,security,middleware,monitoring,tasks,task_implementations}.py` | **Dead. ~4,000 LoC. Does not even compile** (`enterprise_app.py:195` IndentationError; broken imports; deps like celery/redis/jwt not installed). Imported only by the test suite. | ❌ Delete or quarantine — do not "fix in place" |
-| **③ Legacy** | `backend/streamlit.py` (Streamlit UI), `backend/work.py` (empty, 0 bytes) | Superseded by the React frontend. | ❌ Delete or move to `legacy/` |
-
-The `Dockerfile` and `docker-compose*.yml` deploy stack ②, so **`docker compose up` produces
-a crash-looping container** — there is currently no container target that runs the live app.
-The test suite (`backend/tests/`) also targets stack ② and cannot even be collected. So:
-**there is effectively zero automated test coverage of the shipped app.**
-
-## Repo layout (what's real)
+## Repo layout (all of it is real now — the dead "enterprise" stack and legacy UI are gone)
 
 ```
 backend/
-  main.py                 ① LIVE entry — uvicorn main:fastapi_app on :8000
+  main.py                 LIVE entry — uvicorn main:fastapi_app on :8000; CORS + rate-limit middleware
   api/
-    endpoints.py          ① the 6 real routes (see contract below)
-    dependencies.py       ① resolves db_file / db_path / db_url / db_connection_string
-    models.py             ⚠ Pydantic models declared but NOT enforced (handlers return raw dicts)
+    endpoints.py          /chat/ /schema/ /schema/cache (GET+DELETE) / /  /health
+    dependencies.py       resolves db_file / db_path / db_url / db_connection_string; require_api_key
+    models.py             Pydantic response models (handlers return JSONResponse; shapes match)
   services/
-    schema_service.py     ① schema extraction + cache orchestration
-    query_service.py      ① NL→SQL orchestration, shapes the response
+    schema_service.py     schema extraction + cache orchestration + governance filter
+    query_service.py      NL→SQL orchestration; history, governance masking, response shaping
   graphs/
-    query_graph.py        ① LIVE LangGraph: writer→validator→executor→(retry)→formatter
-    schema_graph.py       ① LIVE single-node schema-reflection graph
-    main_graph.py         ✗ DEAD (compiles main_app; nothing imports it)
-  agents/                 ① the 7 pipeline agents (see below)
+    query_graph.py        LIVE LangGraph: writer→validator→executor→(retry)→formatter
+    schema_graph.py       LIVE single-node schema-reflection graph
+  agents/                 the 7 pipeline agents
     sql_writer.py  validator.py  db_executor.py  answer.py
     schema.py  user_input.py  fallback.py  sql_retry.py
-  llm/                    ① pluggable LLM layer (EC-01): base.py protocol, providers/
-                               (gemini, openai_compat), factory.py (env-driven), prompts.py,
-                               service.py (the 2 funcs agents call; retry loop lives here)
+  llm/                    pluggable LLM layer (EC-01): base.py protocol, providers/ (gemini,
+                          openai_compat), factory.py (env-driven), prompts.py (dialect-aware),
+                          service.py (the 2 funcs agents call; retry loop lives here)
   core/
-    config.py             ① flat hardcoded constants (CORS=['*'], etc.) — not env-driven
-    database.py           ① connection-string parsing + path validation
-    cache.py              ① process-global schema cache dict (TTL 3600s)
-    file_handler.py       ① upload/download temp-file handling
-    auth.py security.py middleware.py monitoring.py tasks.py task_implementations.py  ✗ DEAD (stack ②)
-  Database/
-    PopulateDB.py         Faker-based sample-data generator
-    HospitalSchema.py     ✗ orphaned SQLAlchemy models (schema-mismatched, unused)
-  hospital.db, multi_table.db   ← ready-to-use SQLite fixtures for the LIVE app
-  tests/                  ✗ target stack ② (dead); not runnable
-  enterprise_*.py, main_graph.py   ✗ DEAD (stack ②)
-  streamlit.py, work.py            ✗ legacy (stack ③)
+    settings.py           pydantic-settings (env + backend/.env, DATATALKER_ prefix) — single config source
+    engines.py            pooled SQLAlchemy engines per db_uri (bounded, TTL-evicted); SQLite query_only pin
+    ratelimit.py          sliding-window per-IP limiter (middleware on POST /chat/ + /schema/)
+    audit.py              append-only JSONL audit log (who-asked-what + SQL verdict + latency)
+    governance.py         optional JSON: allowed_tables + masked_columns (full/partial/hash)
+    semantic.py           optional YAML glossary (table/column descriptions, synonyms, metrics)
+    dialects.py           dialect registry (sqlite/postgresql/mysql → prompt snippets)
+    cache.py              the ONE schema cache (service dict + agent LRU share it, TTL'd)
+    database.py           connection-string parsing + db_path confinement (SEC-04)
+    file_handler.py       upload/download temp-file handling (mkstemp, size caps, SSRF guard)
+    logging_config.py     structured logging + per-request X-Request-ID
+  Database/PopulateDB.py  Faker-based sample-data generator
+  hospital.db, multi_table.db   ready-to-use SQLite fixtures
+  governance.example.json  semantic.hospital.yml   ← example configs for the two optional features
+  test_*.py               18 assert-based test scripts run directly (`uv run python test_x.py`)
 
-frontend/                 ① React 19 + Vite 6 + Tailwind 4, package manager = bun
-  src/App.tsx             top-level state + the request logic (two ~90-line duplicate handlers)
-  src/components/         ChatArea, ChatMessage, ResultsTable, Sidebar, Header, InputArea, Settings, ...
-  src/types.ts            response types (do NOT model the multi-statement result shape — a bug)
+frontend/                 React 19 + Vite 6 + Tailwind 4, package manager = bun
+  src/App.tsx             single sendQuestion() flow; history, abort/timeout, persistence
+  src/components/         ChatArea, ChatMessage (pagination + CSV in ResultsTable), Sidebar
+                          (real file upload), Header (live health badge), Settings, ...
+  src/lib/                storage.ts (localStorage), csv.ts (RFC-4180 export)
+  src/types.ts            response types (incl. results_truncated / latency_ms / row_cap)
 ```
 
 ## The live API contract (`api/endpoints.py`)
 
-- `POST /chat/` — **multipart form** (not JSON). Fields: `question` (required) + exactly one DB
-  reference. Returns `{ answer, sql, results, follow_up_questions }`.
+- `POST /chat/` — **multipart form**. Fields: `question` (required), exactly one DB
+  reference (`db_file` upload | `db_path` server-absolute path | `db_url` | `db_connection_string`),
+  optional `history` (JSON array of last turns `{question, answer, sql}`, max 5 kept).
+  Returns `{ answer, sql, results, follow_up_questions, results_truncated, sql_executed,
+  validator_rejected, latency_ms }`.
 - `POST /schema/` — extract & cache schema only.
 - `GET /schema/cache`, `DELETE /schema/cache` — inspect / clear the schema cache.
-- `GET /` (info), `GET /health` (static liveness stub — always returns healthy).
+- `GET /` (info), `GET /health` (real readiness: 200 healthy / 503 degraded if settings or
+  the LLM provider can't be built).
 
 DB reference resolution priority (`api/dependencies.py`): `db_connection_string` > `db_path`
 > `db_file` > `db_url`.
-- `db_path` = an **absolute path on the SERVER's filesystem** (not a browser file). ⚠ The
-  frontend's "Local File" tab sends *this*, so browser users can't actually upload their own
-  `.db` — see `docs/CODEBASE_AUDIT.md` FE-01.
-- `db_connection_string` = `sqlite:///abs/path` or `postgresql://user:pass@host/db`.
-- `results` is polymorphic: a flat `list[dict]` for one SELECT, but a **list of wrapper dicts**
-  `{statement_index, statement, results, row_count}` for multi-statement SQL — which the
-  frontend does not unwrap (renders `[object Object]`). See CORR-3 / FE-02.
+- `db_path` = an **absolute path on the SERVER's filesystem**, confined to
+  `DATATALKER_DB_DIR` (default `backend/`). The frontend's default tab uploads the actual
+  file (`db_file`) instead — server paths are an "Advanced" option.
+- `db_connection_string` = `sqlite:///abs/path`, `postgresql://user:pass@host/db`, or
+  `mysql://user:pass@host/db` (pymysql).
+- `results` is a flat `list[dict]` (single read-only SELECT is enforced; multi-statement
+  rejected by the validator AND the executor).
 
 ## Running it locally
 
-**Backend** (needs `GEMINI_API_KEY` — or `LLM_PROVIDER=openai` + `LLM_API_KEY`/`LLM_BASE_URL`/`LLM_MODEL` —
-**and `DATATALKER_API_KEY`** in `backend/.env`; missing LLM config surfaces as a clear error on the
+**Backend** (needs `GEMINI_API_KEY` — or `LLM_PROVIDER=openai` + `LLM_API_KEY`/`LLM_BASE_URL`/`LLM_MODEL`
+— **and `DATATALKER_API_KEY`** in `backend/.env`; missing LLM config surfaces as a clear error on the
 first LLM call, and every data request is denied without the API key):
 ```bash
 cd backend
 # backend/.env (gitignored):
 #   GEMINI_API_KEY=...
 #   DATATALKER_API_KEY=<a long random secret>   # clients send: Authorization: Bearer <it>
-#   DATATALKER_DB_DIR=...   (optional; default backend/ — db_path is confined here)
 uv run uvicorn main:fastapi_app --reload --port 8000
 ```
 
@@ -121,72 +110,41 @@ The frontend calls the backend at `localStorage.apiUrl` or `http://127.0.0.1:800
 (configurable in the Settings panel).
 
 **Smoke-test the LIVE path** (no browser needed) — use a bundled fixture with an **absolute**
-path:
+path (both separators work):
 ```bash
 curl -X POST http://127.0.0.1:8000/chat/ \
   -H "Authorization: Bearer $DATATALKER_API_KEY" \
   -F "question=How many patients are there?" \
   -F "db_path=E:/GENAI-PROJECTS/DataTalker/backend/hospital.db"
 ```
+Without a valid LLM key you can still E2E-test by pointing `LLM_PROVIDER=openai` +
+`LLM_BASE_URL` at any OpenAI-compatible mock (the provider seam makes this trivial).
 
-## The NL→SQL pipeline (stack ①)
+## The NL→SQL pipeline
 
-`query_graph.py` wires: **SQLWriterAgent** (Gemini writes SQL or decides no SQL is needed) →
-**ValidatorAgent** (keyword blocklist safety gate) → **DBExecutorAgent** (runs the SQL via a
-per-request SQLAlchemy engine) → optional **SQLRetryAgent** (max 2 retries when results are
-empty) → **AnswerFormatterAgent** (Gemini turns rows into a NL answer + follow-up questions).
-Schema is reflected once by **SchemaAgent** and cached.
+`query_graph.py` wires: **SQLWriterAgent** (LLM writes SQL or decides no SQL is needed; gets
+dialect snippet + governance note + semantic glossary + chat history as extra context) →
+**ValidatorAgent** (single read-only `SELECT`/`WITH`; rejects masked columns) →
+**DBExecutorAgent** (pooled engine, hard row cap, statement timeout on server DBs, SQLite
+`query_only` pin) → optional **SQLRetryAgent** (max 2 retries when results are empty) →
+**AnswerFormatterAgent** (LLM turns rows into a NL answer + follow-up questions). Schema is
+reflected once by **SchemaAgent** and cached in the single TTL'd cache. Optional governance
+masking is applied to result rows before they leave `query_service`.
 
-## Landmines — the top things that will bite you
+## Configuration (all env-driven via `core/settings.py`, prefix `DATATALKER_`)
 
-Phase 1 fixed the critical/high security + prod items (per-finding status in
-`docs/CODEBASE_AUDIT.md`). Current state:
-
-**Fixed in Phase 1 + Phase 2A** (each has an assert-based test in `backend/test_*.py`):
-1. ✅ **SEC-01** — SQL is now an allowlist: a single read-only `SELECT`/`WITH` on a read-only
-   engine (`agents/validator.py`, `agents/db_executor.py`). Multi-statement rejected.
-2. ✅ **SEC-02 / SEC-06** — API-key auth on all data routes (`DATATALKER_API_KEY`, deny-by-default)
-   + CORS locked to explicit origins.
-3. ✅ **PR-02** — `/chat/` + `/schema/` are sync `def` → run in Starlette's threadpool.
-4. ✅ **SEC-03/04, PR-11** — `db_url` SSRF-guarded; `db_path` confined to `DATATALKER_DB_DIR`;
-   size caps; unique temp files.
-5. ✅ **PR-05/SEC-05** — generic client errors; secrets/tracebacks to logs only; Gemini key in header.
-6. ✅ **CORR-1** — Postgres schema cache now expires via a TTL.
-7. ✅ **PR-06** — structured logging + per-request `X-Request-ID` (backbone; legacy prints remain).
-8. ✅ **EC-01** — pluggable LLM provider: `LLM_PROVIDER=gemini|openai` + `LLM_BASE_URL`
-   runs any OpenAI-compatible endpoint (OpenAI/Azure/vLLM/Ollama/LiteLLM). Gemini stays
-   the zero-config default. See `backend/llm/` + `test_llm_{service,factory,providers}.py`.
-
-**Still open (Phase 2+):**
-- **Two schema caches** (`core/cache.py` + `SchemaAgent`'s LRU/JSON) can still diverge.
-- **PR-03** no engine pooling · **PR-09** no rate limiting · the ~100 `print()` sweep · **ARCH-06** bogus deps.
-- Single-tenant; no semantic layer / RBAC / dialects beyond sqlite+postgres (Phase 2 = the PRD).
-
-## Conventions & gotchas when changing code
-
-- **Only edit stack ①.** If you touch `enterprise_*`, `core/{auth,security,middleware,monitoring,
-  tasks,task_implementations}`, or top-level `main_graph.py`, you are editing dead code.
-- LLM access goes through `llm/service.py` (`generate_sql_or_response` / `format_answer`) —
-  never call a provider directly. New providers implement `llm/base.py:LLMProvider` and get
-  wired in `llm/factory.py`. Config: `LLM_PROVIDER`/`LLM_MODEL`/`LLM_API_KEY`/`LLM_BASE_URL`.
-- `core/config.py` is hardcoded constants; there is **no** pydantic Settings / env loading beyond
-  `GEMINI_API_KEY`. Don't assume `.env` / compose env vars take effect — they mostly don't.
-- Two dependency manifests (`pyproject.toml` pinned, `requirements.txt` unpinned) drift. `uv` is
-  the source of truth (`uv.lock`). Note `pathlib` and `replicate` are bogus/dead deps.
-- Python is pinned to **3.13** (`.python-version`), but the `Dockerfile` uses 3.11 — inconsistent.
-
-## Tooling available in this repo
-
-- **code-review-graph** (MCP server, `.mcp.json`) — a local Tree-sitter code graph of this repo
-  (~500 nodes). After a Claude Code restart, query it for blast-radius / minimal review context.
-  Rebuild manually: `code-review-graph build`. Auto-updates via git pre-commit + PostToolUse hooks.
-- **`/graphify`** skill — builds a Claude-powered semantic knowledge graph (good for turning the
-  docs/architecture into a queryable map; note it sends non-code content to an LLM).
-- **ponytail** plugin — active from next session; nudges toward the smallest correct diff. Fitting,
-  given this codebase's #1 issue is over-engineering.
+`DATATALKER_API_TITLE/VERSION, DATATALKER_CORS_ORIGINS` (alias `CORS_ALLOWED_ORIGINS`),
+`DATATALKER_CACHE_TTL_SECONDS=3600, DATATALKER_ALLOWED_UPLOAD_EXTENSIONS=.db,.sqlite,.sqlite3,
+DATATALKER_MAX_UPLOAD_MB=100, DATATALKER_DB_DIR, DATATALKER_MAX_QUERY_ROWS=500,
+DATATALKER_STATEMENT_TIMEOUT_SECONDS=30, DATATALKER_RATE_LIMIT_REQUESTS=30 (0=off),
+DATATALKER_RATE_LIMIT_WINDOW_SECONDS=60, DATATALKER_AUDIT_LOG_PATH=logs/audit.log (""=off),
+DATATALKER_GOVERNANCE_FILE="" , DATATALKER_SEMANTIC_FILE=""`. LLM config (no prefix):
+`LLM_PROVIDER=gemini|openai`, `LLM_MODEL`, `LLM_API_KEY`, `LLM_BASE_URL`.
 
 ## Definition of done for changes here
 
-- Verify against the **live** path (`main:fastapi_app` + a fixture DB), not the dead tests.
-- Prefer **deletion/consolidation** over adding a fourth way to do something.
+- Verify against the **live** path (`main:fastapi_app` + a fixture DB), not just unit tests.
+- Prefer **deletion/consolidation** over adding another way to do something.
 - Don't reintroduce doc/reality drift: if you change behavior, update this file and the audit.
+- Test changes as assert-based scripts in `backend/test_*.py` (run directly with
+  `uv run python test_x.py`; there is no pytest).

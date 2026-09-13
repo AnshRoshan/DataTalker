@@ -11,13 +11,13 @@ database's schema, uses an LLM (Gemini by default; any OpenAI-compatible endpoin
 `LLM_*` config) to write SQL, executes it read-only, and returns a plain-English answer +
 the SQL + the result rows. FastAPI backend + React/Vite (TypeScript) frontend.
 
-**Status: Phase-3 hardened + feature-complete for a single-tenant tool.** Security hardening
-(Phases 0–1) and the pluggable LLM (Phase 2A) landed earlier; Phase 3 added: env-driven
-settings, pooled DB engines, per-IP rate limiting, a hard row cap + statement timeouts, a
-real readiness `/health`, a JSONL audit log, governance-lite (table allowlist + column
-masking), a semantic-layer YAML glossary, MySQL dialect support, and multi-turn chat
-history. All 18 `backend/test_*.py` scripts pass; the full `/chat/` pipeline is verified
-end-to-end (mock LLM) against `backend/hospital.db`.
+**Status: Phase-4 scale wave.** Security hardening (Phases 0–1) and the pluggable LLM (Phase 2A)
+landed earlier; Phase 3 added env-driven settings, pooled DB engines, rate limiting, row cap +
+timeouts, real `/health`, audit log, governance-lite, semantic layer, MySQL, chat history.
+Phase 4 added: **schema graph + relevance retrieval** (huge schemas are pruned per-question),
+a **connections registry** with **preflight checks**, and **universal SQLAlchemy URL support**
+(any dialect; extras for mssql/oracle/snowflake). All 22 `backend/test_*.py` scripts pass; the
+full pipeline is verified end-to-end against the bundled fixtures.
 
 ## Repo layout (all of it is real now — the dead "enterprise" stack and legacy UI are gone)
 
@@ -43,11 +43,15 @@ backend/
   core/
     settings.py           pydantic-settings (env + backend/.env, DATATALKER_ prefix) — single config source
     engines.py            pooled SQLAlchemy engines per db_uri (bounded, TTL-evicted); SQLite query_only pin
+    schema_graph.py       tables/cols nodes + FK edges + inferred joins; compact prompt renderer
+    schema_retrieval.py   per-question relevance pruning of huge schemas (top-K + 1-hop neighbors)
+    connections.py        JSON-file registry of saved connections (masked URIs only in responses)
+    preflight.py          any-URL connection check (dialect, server version, table count, warnings)
     ratelimit.py          sliding-window per-IP limiter (middleware on POST /chat/ + /schema/)
     audit.py              append-only JSONL audit log (who-asked-what + SQL verdict + latency)
     governance.py         optional JSON: allowed_tables + masked_columns (full/partial/hash)
     semantic.py           optional YAML glossary (table/column descriptions, synonyms, metrics)
-    dialects.py           dialect registry (sqlite/postgresql/mysql → prompt snippets)
+    dialects.py           dialect registry (sqlite/postgresql/mysql + generic ANSI fallback)
     cache.py              the ONE schema cache (service dict + agent LRU share it, TTL'd)
     database.py           connection-string parsing + db_path confinement (SEC-04)
     file_handler.py       upload/download temp-file handling (mkstemp, size caps, SSRF guard)
@@ -67,23 +71,30 @@ frontend/                 React 19 + Vite 6 + Tailwind 4, package manager = bun
 
 ## The live API contract (`api/endpoints.py`)
 
-- `POST /chat/` — **multipart form**. Fields: `question` (required), exactly one DB
-  reference (`db_file` upload | `db_path` server-absolute path | `db_url` | `db_connection_string`),
-  optional `history` (JSON array of last turns `{question, answer, sql}`, max 5 kept).
-  Returns `{ answer, sql, results, follow_up_questions, results_truncated, sql_executed,
-  validator_rejected, latency_ms }`.
-- `POST /schema/` — extract & cache schema only.
+- `POST /chat/` — **multipart form**. Fields: `question` (required), a DB reference
+  (`connection_id` | `db_file` upload | `db_path` server-absolute path | `db_url` |
+  `db_connection_string`), optional `history` (JSON array of last turns `{question, answer,
+  sql}`, max 5 kept). Returns `{ answer, sql, results, follow_up_questions,
+  results_truncated, sql_executed, validator_rejected, latency_ms }`.
+- `POST /schema/` — extract & cache schema only (same DB-reference fields).
+- `POST /schema/graph/` — nodes + edges (FK + inferred joins) for the visual explorer;
+  capped at 200 nodes with `truncated: true`.
+- `GET/POST /connections/`, `DELETE /connections/{id}`, `POST /connections/{id}/check` —
+  saved-connection registry; full connection strings NEVER leave the server (masked URIs
+  only). Creating a connection runs the preflight; failures are rejected with the
+  structured error.
 - `GET /schema/cache`, `DELETE /schema/cache` — inspect / clear the schema cache.
 - `GET /` (info), `GET /health` (real readiness: 200 healthy / 503 degraded if settings or
   the LLM provider can't be built).
 
-DB reference resolution priority (`api/dependencies.py`): `db_connection_string` > `db_path`
-> `db_file` > `db_url`.
+DB reference resolution priority (`api/dependencies.py`): explicit refs > `connection_id`.
 - `db_path` = an **absolute path on the SERVER's filesystem**, confined to
   `DATATALKER_DB_DIR` (default `backend/`). The frontend's default tab uploads the actual
   file (`db_file`) instead — server paths are an "Advanced" option.
-- `db_connection_string` = `sqlite:///abs/path`, `postgresql://user:pass@host/db`, or
-  `mysql://user:pass@host/db` (pymysql).
+- Any SQLAlchemy URL is accepted: `sqlite:///abs/path`, `postgresql://`, `mysql://` built
+  in; other dialects (mssql/oracle/snowflake/…) work when the optional driver extra is
+  installed (`uv sync --extra mssql|oracle|snowflake|all`); missing drivers produce a clear
+  400 naming the extra.
 - `results` is a flat `list[dict]` (single read-only SELECT is enforced; multi-statement
   rejected by the validator AND the executor).
 
@@ -129,7 +140,10 @@ dialect snippet + governance note + semantic glossary + chat history as extra co
 `query_only` pin) → optional **SQLRetryAgent** (max 2 retries when results are empty) →
 **AnswerFormatterAgent** (LLM turns rows into a NL answer + follow-up questions). Schema is
 reflected once by **SchemaAgent** and cached in the single TTL'd cache. Optional governance
-masking is applied to result rows before they leave `query_service`.
+masking is applied to result rows before they leave `query_service`. For schemas larger than
+`DATATALKER_MAX_PROMPT_TABLES` (default 25), `core/schema_retrieval.py` scores tables against
+the question and sends only the top-K plus their 1-hop graph neighbors (`core/schema_graph.py`),
+with a pruning note so the model knows more exists.
 
 ## Configuration (all env-driven via `core/settings.py`, prefix `DATATALKER_`)
 

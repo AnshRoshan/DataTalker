@@ -72,6 +72,9 @@ assert "SQLite databases." in sys_sqlite
 sys_pg = build_sql_instruction("postgresql")
 assert "PostgreSQL databases." in sys_pg
 assert "double quotes for identifiers" in sys_pg  # pre-registry wording preserved
-assert "defaulting to SQLite behavior" in build_sql_instruction("oracle"), "unknown dialect falls back to sqlite"
+sys_oracle = build_sql_instruction("oracle")
+assert "dialect-specific guidance unavailable" in sys_oracle, "unknown dialect gets the generic ANSI fallback"
+assert "SQLite" not in sys_oracle, "fallback must not claim sqlite semantics"
+assert "LIMIT n" in sys_oracle
 
 print("semantic: all assertions passed")

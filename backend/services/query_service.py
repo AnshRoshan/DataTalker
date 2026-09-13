@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import HTTPException
 
 from core.governance import load_governance, mask_rows, prompt_note
+from core.schema_retrieval import select_relevant_tables
 from graphs.query_graph import query_app
 
 logger = logging.getLogger(__name__)
@@ -53,14 +54,33 @@ class QueryService:
         gov = load_governance()
         masked_columns = schema_data.get("masked_columns") or []
 
+        # Large-schema retrieval: when the schema exceeds the prompt budget,
+        # prune to the tables most relevant to THIS question (plus their direct
+        # join neighbors) before the writer sees it.
+        full_detailed_schema = schema_data.get("detailed_schema") or []
+        detailed_schema, pruning_note = select_relevant_tables(full_detailed_schema, question)
+        schema_description = schema_data.get("schema_description")
+        if pruning_note:
+            from agents.schema import SchemaAgent
+
+            schema_description = (
+                SchemaAgent._format_schema_for_llm(
+                    detailed_schema,
+                    db_dialect,
+                    masked_columns=set(masked_columns) if masked_columns else None,
+                )
+                + "\n"
+                + pruning_note
+            )
+
         # Prepare state for query processing
         query_state = {
             "question": question,
             "db_path": db_path,
             "db_uri": db_uri,
             "db_dialect": db_dialect,
-            "detailed_schema": schema_data.get("detailed_schema"),
-            "schema_description": schema_data.get("schema_description"),
+            "detailed_schema": detailed_schema,
+            "schema_description": schema_description,
             "history": _sanitize_history(history),
             "masked_columns": list(masked_columns) if masked_columns else None,
             "governance_note": schema_data.get("governance_note"),

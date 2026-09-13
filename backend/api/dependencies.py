@@ -9,7 +9,6 @@ from fastapi import Form, File, UploadFile, HTTPException, Header
 from core.database import parse_connection_string, is_database_connection_url, validate_database_path
 from core.file_handler import save_uploaded_file, download_database_from_url
 
-
 def require_api_key(authorization: Optional[str] = Header(None)) -> None:
     """Gate data routes on a shared API key. Deny by default if none is configured.
 
@@ -32,11 +31,14 @@ class DatabaseInputHandler:
         db_path: Optional[str] = Form(None),
         db_url: Optional[str] = Form(None),
         db_connection_string: Optional[str] = Form(None),
+        connection_id: Optional[str] = Form(None),
     ) -> Tuple[str, str, Optional[str], Optional[str]]:
         """
         Process database input and return (db_uri, db_dialect, local_db_path, temp_file_to_cleanup).
-        
-        Priority order: db_connection_string > db_path > db_file > db_url
+
+        Priority order: db_connection_string > db_path > db_file > db_url > connection_id.
+        `connection_id` resolves the connection string from the connections registry
+        (core/connections.py) — lowest precedence, so explicit db refs always win.
         """
         db_uri = None
         db_dialect = None
@@ -71,6 +73,20 @@ class DatabaseInputHandler:
                 local_db_path = temp_file_to_cleanup
                 db_uri = f"sqlite:///{local_db_path}"
                 db_dialect = "sqlite"
+
+        elif connection_id:
+            # Connections registry (lowest precedence: explicit db refs win)
+            from core.connections import get_connection
+
+            record = get_connection(connection_id)
+            if record is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Unknown connection_id: no registered connection with that id.",
+                )
+            db_uri, db_dialect, local_db_path = parse_connection_string(
+                str(record["connection_string"])
+            )
 
         else:
             raise HTTPException(

@@ -75,6 +75,39 @@ class HealthResponse(BaseModel):
     version: Optional[str] = None
 
 
+class ConnectionCreate(BaseModel):
+    """Request body for registering a connection (JSON)."""
+    name: str = Field(..., description="Human-friendly connection name")
+    connection_string: str = Field(..., description="SQLAlchemy connection string")
+    notes: Optional[str] = Field(None, description="Free-form notes")
+
+
+class ConnectionOut(BaseModel):
+    """A registered connection — NEVER carries the real connection string."""
+    id: str
+    name: str
+    connection_string_masked: str
+    notes: Optional[str] = None
+    created_at: Optional[str] = None
+    last_checked_at: Optional[str] = None
+    last_status: Optional[Dict[str, Any]] = None
+    dialect: Optional[str] = None
+    table_count: Optional[int] = None
+
+
+class ConnectionListResponse(BaseModel):
+    """Response model for GET /connections/."""
+    connections: List[ConnectionOut]
+    total: int
+
+
+class ConnectionCheckResponse(BaseModel):
+    """Response model for POST /connections/{id}/check."""
+    id: str
+    last_checked_at: Optional[str] = None
+    last_status: Optional[Dict[str, Any]] = None
+
+
 class APIInfo(BaseModel):
     """Response model for API information."""
     message: str

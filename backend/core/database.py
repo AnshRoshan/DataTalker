@@ -7,6 +7,8 @@ from typing import Optional, Tuple
 from fastapi import HTTPException
 
 from fastapi import HTTPException
+from sqlalchemy.engine.url import make_url
+from sqlalchemy.exc import ArgumentError, NoSuchModuleError
 
 from .settings import get_settings
 
@@ -57,6 +59,46 @@ def validate_database_path(db_path: str) -> str:
     return real
 
 
+# Known dialects keep their existing handling (sqlite confinement, pg/mysql
+# aliases); any other SQLAlchemy URL is accepted when its dialect and DBAPI
+# driver are importable (universal database support) and rejected with a clear
+# 400 naming the missing optional extra otherwise (e.g. pyodbc for mssql).
+_KNOWN_PREFIXES = {
+    "postgresql": ("postgresql://", "postgres://"),
+    "mysql": ("mysql+pymysql://", "mysql://"),
+}
+
+
+def _resolve_universal_dialect(url_string: str) -> str:
+    """Backend name for a non-whitelisted SQLAlchemy URL with an importable
+    dialect + driver; raises HTTPException(400) otherwise."""
+    try:
+        url = make_url(url_string)
+    except ArgumentError:
+        raise HTTPException(
+            status_code=400,
+            detail="Unsupported connection string format. Supported: sqlite:///path/to/file.db, postgresql://user:pass@host:port/dbname, mysql://user:pass@host:port/dbname, or any SQLAlchemy URL (e.g. mssql+pyodbc://, oracle+oracledb://) with its driver installed.",
+        )
+    backend = url.get_backend_name()
+    try:
+        dialect_cls = url.get_dialect()
+        dialect_cls.dbapi()  # lightweight import check — the real connect happens via preflight/engine use
+    except NoSuchModuleError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported database dialect: {backend}. Install the matching SQLAlchemy dialect package.",
+        )
+    except ModuleNotFoundError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Database driver for '{backend}' is not installed ({e.name}). "
+                "Install the matching optional extra, e.g. 'pip install talktodata[mssql]' or talktodata[oracle]."
+            ),
+        )
+    return backend
+
+
 def parse_connection_string(connection_string: str) -> Tuple[str, str, Optional[str]]:
     """Parse connection string and return (db_uri, db_dialect, db_path)."""
     if connection_string.startswith("sqlite:///"):
@@ -64,22 +106,21 @@ def parse_connection_string(connection_string: str) -> Tuple[str, str, Optional[
         path_part = connection_string[10:]  # Remove "sqlite:///"
         local_db_path = validate_database_path(path_part)
         return connection_string, "sqlite", local_db_path
-    elif connection_string.startswith(("postgresql://", "postgres://")):
-        # PostgreSQL connection string
-        return connection_string, "postgresql", None
-    elif connection_string.startswith(("mysql+pymysql://", "mysql://")):
-        # MySQL connection string (pymysql driver; EC-03)
-        return connection_string, "mysql", None
-    else:
-        raise HTTPException(
-            status_code=400,
-            detail="Unsupported connection string format. Supported: sqlite:///path/to/file.db, postgresql://user:pass@host:port/dbname, mysql://user:pass@host:port/dbname",
-        )
+    for dialect, prefixes in _KNOWN_PREFIXES.items():
+        if connection_string.startswith(prefixes):
+            return connection_string, dialect, None
+    return connection_string, _resolve_universal_dialect(connection_string), None
 
 
 def is_database_connection_url(url: str) -> bool:
     """Check if URL is a database connection string rather than a file download URL."""
-    return url.startswith(("postgresql://", "postgres://", "sqlite:///", "mysql+pymysql://", "mysql://"))
+    if url.startswith(("postgresql://", "postgres://", "sqlite:///", "mysql+pymysql://", "mysql://")):
+        return True
+    try:
+        make_url(url).get_dialect()  # resolves only for real SQLAlchemy dialects
+        return True
+    except (ArgumentError, NoSuchModuleError):
+        return False
 
 
 def generate_database_hash(db_uri: str, db_path: Optional[str] = None) -> str:

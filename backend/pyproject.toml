@@ -21,3 +21,10 @@ dependencies = [
     "sqlalchemy>=2.0.41",
     "uvicorn>=0.34.2",
 ]
+
+[project.optional-dependencies]
+# Optional database drivers (NOT installed by default) — universal DB support.
+mssql = ["pyodbc>=5.0.0"]
+oracle = ["oracledb>=2.0.0"]
+snowflake = ["snowflake-sqlalchemy>=1.6.0"]
+all = ["pyodbc>=5.0.0", "oracledb>=2.0.0", "snowflake-sqlalchemy>=1.6.0"]

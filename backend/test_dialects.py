@@ -15,9 +15,11 @@ assert "backticks" in mpractices
 assert "LIMIT" in mpractices
 assert "DATE_FORMAT" in mpractices
 
-# unknown dialect falls back to SQLite behavior (pre-registry default)
+# unknown dialect falls back to the generic standard-SQL snippet (universal support)
 ctx, practices = get_dialect_prompt("oracle")
-assert "defaulting to SQLite behavior" in ctx
+assert "oracle SQL database" in ctx
+assert "standard SQL (ANSI)" in practices
+assert "LIMIT" in practices
 
 # --- connection-string parsing accepts mysql:// and mysql+pymysql:// ---
 from core.database import is_database_connection_url, parse_connection_string

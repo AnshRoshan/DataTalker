@@ -47,6 +47,13 @@ class Settings(BaseSettings):
     # Database confinement (db_path must live inside this directory)
     db_dir: str = str(_BACKEND_DIR)
 
+    # Connections-registry storage dir (core/connections.py writes connections.json here)
+    data_dir: str = str(_BACKEND_DIR / "data")
+
+    # Schema-retrieval budget: max tables rendered into the SQL-writer prompt
+    # (0 = unlimited). Larger schemas are pruned to the most relevant tables.
+    max_prompt_tables: int = 25
+
     # Dialects accepted across the app (EC-03 added mysql)
     supported_dialects: list[str] = ["sqlite", "postgresql", "mysql"]
 

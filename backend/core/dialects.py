@@ -2,8 +2,8 @@
 """Dialect registry (EC-03): per-dialect prompt snippets for the SQL writer.
 
 One place mapping dialect -> (context sentence, best-practices bullet list).
-Adding a dialect = adding an entry here (plus driver support in
-core/database.py and a timeout branch in agents/db_executor.py).
+Known dialects get tailored snippets; any other SQLAlchemy-supported dialect
+gets a generic standard-SQL fallback, so NL→SQL still works universally.
 """
 
 
@@ -41,8 +41,8 @@ def _mysql() -> tuple[str, str]:
     )
 
 
-# dialect -> (context, practices). Unknown dialects fall back to SQLite behavior,
-# matching the pre-registry default.
+# dialect -> (context, practices). Unknown dialects fall back to a generic
+# standard-SQL snippet so NL→SQL still works on any SQLAlchemy-supported DB.
 DIALECT_PROMPTS: dict[str, tuple[str, str]] = {
     "sqlite": _sqlite(),
     "postgresql": _postgresql(),
@@ -51,11 +51,19 @@ DIALECT_PROMPTS: dict[str, tuple[str, str]] = {
 
 
 def get_dialect_prompt(dialect: str) -> tuple[str, str]:
-    """(context, practices) for a dialect; unknown dialects default to SQLite behavior."""
-    return DIALECT_PROMPTS.get(dialect, (
-        "You are working with a SQL database (defaulting to SQLite behavior).",
-        "- Ensure all SQL is valid SQLite syntax.\n",
-    ))
+    """(context, practices) for a dialect; unknown dialects get a generic
+    standard-SQL fallback (not SQLite-specific)."""
+    if dialect in DIALECT_PROMPTS:
+        return DIALECT_PROMPTS[dialect]
+    return (
+        f"You are working with a {dialect} SQL database (dialect-specific guidance unavailable).",
+        (
+            "- Use standard SQL (ANSI) syntax.\n"
+            "- Use double quotes for identifiers (table/column names) only when necessary (e.g., spaces or special characters), otherwise use standard unquoted names.\n"
+            "- Use single quotes for string literals.\n"
+            "- Use LIMIT n for row limits (e.g., LIMIT 10).\n"
+        ),
+    )
 
 
 def supported_dialects() -> list[str]:

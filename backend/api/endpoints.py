@@ -388,25 +388,32 @@ def create_endpoints(app: FastAPI, serve_spa: bool = False) -> None:
                 status_code=503,
                 content={"status": "degraded", "message": f"Configuration could not be loaded: {type(e).__name__}."},
             )
+        from llm.selection import provider_name
+
         try:
             from llm.factory import get_provider
 
             provider = get_provider()  # raises RuntimeError on missing/misconfigured LLM env
-            llm_ok, reason = True, ""
         except Exception as e:
-            provider, llm_ok, reason = None, False, str(e)
-        if not llm_ok:
-            # Keep the message free of credential values — factory errors name env vars only.
-            return JSONResponse(
-                status_code=503,
-                content={"status": "degraded", "message": f"LLM provider unavailable: {reason}"},
-            )
-        from llm.selection import provider_name
+            # No operator key is a supported shape, not a broken deployment: every caller
+            # may bring their own (X-LLM-Provider / X-LLM-Key), so this instance answers
+            # for them. Report that mode instead of failing readiness — but say so plainly.
+            return {
+                "status": "healthy",
+                "message": "API is running (no operator LLM key; callers must bring their own)",
+                "version": settings.api_version,
+                "llm_mode": "byok-only",
+                "llm_provider": None,
+                "llm_model": None,
+                "auth": "required" if settings.require_api_key else "disabled",
+            }
 
         return {
             "status": "healthy",
             "message": "API is running",
             "version": settings.api_version,
+            "llm_mode": "operator-or-byok",
             "llm_provider": provider_name(),
             "llm_model": getattr(provider, "model", None),
+            "auth": "required" if settings.require_api_key else "disabled",
         }

@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     api_version: str = "1.0.0"
     api_description: str = "API for chatting with databases using natural language"
 
+    # Shared-secret gate on every data route (SEC-02). Set false only for a public
+    # bring-your-own-key demo where the operator accepts anyone can query it.
+    require_api_key: bool = True
+
     # CORS — explicit origins (no wildcard-with-credentials). Comma-separated.
     cors_origins: str = Field(
         default="http://localhost:5173,http://127.0.0.1:5173",

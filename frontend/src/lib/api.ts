@@ -15,8 +15,22 @@ export const REQUEST_TIMEOUT_MS = 120_000;
 /** How many previous turns are sent to the backend for context. */
 export const HISTORY_WINDOW = 5;
 
+/** Bring-your-own LLM credentials, hydrated from localStorage at startup. Sent as
+ * X-LLM-* headers so a deployment needs no model key of its own. */
+let llmCredentials: { provider: string; apiKey: string } = { provider: '', apiKey: '' };
+
+export function setLlmCredentials(creds: { provider: string; apiKey: string }): void {
+  llmCredentials = creds;
+}
+
+export function byokHeaders(creds = llmCredentials): Record<string, string> {
+  return creds.provider && creds.apiKey
+    ? { 'X-LLM-Provider': creds.provider, 'X-LLM-Key': creds.apiKey }
+    : {};
+}
+
 export function authHeaders(apiKey: string): Record<string, string> {
-  return apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
+  return { ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}), ...byokHeaders() };
 }
 
 /** Extract a human-readable message from any backend/frontend error. */

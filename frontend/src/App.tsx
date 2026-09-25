@@ -17,12 +17,14 @@ import {
   fetchHealth,
   getErrorMessage,
   sendChat,
+  setLlmCredentials,
 } from './lib/api';
 import {
   loadActiveDbRef,
   loadApiKey,
   loadApiUrl,
   loadChatHistory,
+  loadLlmCredentials,
   saveActiveDbRef,
   saveChatHistory,
   saveSettings,
@@ -43,6 +45,9 @@ const ViewFallback: React.FC = () => (
 );
 
 const HEALTH_POLL_MS = 30_000;
+
+// A bring-your-own model key lives in this browser; restore it before the first request.
+setLlmCredentials(loadLlmCredentials());
 
 const App: React.FC = () => {
   const [view, setView] = useState<ViewId>('chat');

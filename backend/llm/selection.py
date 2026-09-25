@@ -45,6 +45,12 @@ def _selection_path() -> Path:
 
 
 def provider_name() -> str:
+    """Which provider is answering: the caller's bring-your-own pick, else env."""
+    from llm.request_provider import current_credentials
+
+    creds = current_credentials()
+    if creds is not None:
+        return creds.provider
     return (os.getenv("LLM_PROVIDER") or "gemini").strip().lower()
 
 
@@ -80,9 +86,9 @@ def set_selected_model(model: str) -> str:
             json.dump({"model": model}, f, indent=2)
         os.replace(tmp, path)
 
-    from llm.factory import get_provider
+    from llm.factory import reset_provider_cache
 
-    get_provider.cache_clear()
+    reset_provider_cache()
     logger.info("LLM model selected: %s (provider: %s)", model, provider_name())
     return model
 
@@ -93,9 +99,9 @@ def clear_selected_model() -> None:
         if path.is_file():
             path.unlink()
 
-    from llm.factory import get_provider
+    from llm.factory import reset_provider_cache
 
-    get_provider.cache_clear()
+    reset_provider_cache()
 
 
 def _get(url: str, headers: Dict[str, str]) -> Any:

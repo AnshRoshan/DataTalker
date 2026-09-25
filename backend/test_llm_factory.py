@@ -3,7 +3,7 @@
 #   uv run --directory backend python test_llm_factory.py
 import os
 
-from llm.factory import get_provider
+from llm.factory import get_provider, reset_provider_cache
 from llm.providers.gemini import GeminiProvider
 from llm.providers.openai_compat import OpenAICompatProvider
 
@@ -13,7 +13,7 @@ def reset(**env):
     for var in ("LLM_PROVIDER", "LLM_MODEL", "LLM_TEMPERATURE", "GEMINI_API_KEY", "LLM_API_KEY", "LLM_BASE_URL"):
         os.environ.pop(var, None)
     os.environ.update(env)
-    get_provider.cache_clear()
+    reset_provider_cache()
 
 
 def expect_error(naming):

@@ -4,6 +4,8 @@ export const CHAT_HISTORY_KEY = 'datatalker.chatHistory';
 export const ACTIVE_DB_REF_KEY = 'datatalker.activeDbRef';
 export const API_URL_KEY = 'apiUrl';
 export const API_KEY_KEY = 'apiKey';
+export const LLM_PROVIDER_KEY = 'llmProvider';
+export const LLM_KEY = 'llmApiKey';
 
 /** Cap on how many messages are persisted to localStorage (most recent are kept). */
 export const MAX_PERSISTED_MESSAGES = 50;
@@ -149,6 +151,33 @@ export function loadApiUrl(): string {
     return localStorage.getItem(API_URL_KEY) || DEFAULT_URL;
   } catch {
     return DEFAULT_URL;
+  }
+}
+
+/** Bring-your-own LLM key. Kept in the browser and sent as X-LLM-* headers on each
+ * request — the server holds it for the duration of that request only. */
+export interface LlmCredentials {
+  provider: string;
+  apiKey: string;
+}
+
+export function loadLlmCredentials(): LlmCredentials {
+  try {
+    return {
+      provider: localStorage.getItem(LLM_PROVIDER_KEY) || '',
+      apiKey: localStorage.getItem(LLM_KEY) || '',
+    };
+  } catch {
+    return { provider: '', apiKey: '' };
+  }
+}
+
+export function saveLlmCredentials(creds: LlmCredentials): void {
+  try {
+    localStorage.setItem(LLM_PROVIDER_KEY, creds.provider);
+    localStorage.setItem(LLM_KEY, creds.apiKey);
+  } catch {
+    /* private-mode browsers: the key simply won't persist */
   }
 }
 

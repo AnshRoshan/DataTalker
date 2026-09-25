@@ -59,6 +59,10 @@ def create_app() -> FastAPI:
     )
     # Per-request correlation id + structured request logging
     app.add_middleware(RequestContextMiddleware)
+    # Bring-your-own LLM key: bind X-LLM-* headers to this request, cleared on exit
+    from llm.request_provider import LlmCredentialsMiddleware
+
+    app.add_middleware(LlmCredentialsMiddleware)
     # Sliding-window rate limit on POST /chat/ + /schema/ (PR-09)
     app.add_middleware(RateLimitMiddleware)
 

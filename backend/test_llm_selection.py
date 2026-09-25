@@ -5,7 +5,7 @@
 import os
 import tempfile
 
-from llm.factory import get_provider
+from llm.factory import get_provider, reset_provider_cache
 from llm.providers.openai_compat import OpenAICompatProvider
 from llm.selection import (
     OPENROUTER_BASE_URL,
@@ -28,7 +28,7 @@ def reset(**env):
         os.environ.pop(var, None)
     os.environ.update(env)
     clear_selected_model()
-    get_provider.cache_clear()
+    reset_provider_cache()
 
 
 # --- the OpenRouter preset: OpenAI wire format, base URL fixed server-side ---

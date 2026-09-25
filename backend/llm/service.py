@@ -18,6 +18,7 @@ from typing import Any, Callable, Dict, Literal
 from llm.base import LLMError
 from llm.factory import get_provider
 from llm.prompts import build_answer_instruction, build_sql_instruction
+from llm.request_provider import has_request_credentials
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,11 @@ MAX_RETRIES = 3
 RETRY_DELAY_SECONDS = 2
 
 _GENERIC_UNAVAILABLE = "The language model is unavailable."
+
+_BYOK_REJECTED = (
+    "The model provider rejected the key you entered. Open Settings and check it "
+    "(or choose a different model)."
+)
 
 
 def _strip_fences(text: str) -> str:
@@ -101,9 +107,11 @@ def _complete_with_retries(
             text = get_provider().complete(system, user)
         except LLMError as e:
             # Full detail to logs only; clients get the actionable hint (rejected
-            # credentials/config) or a generic message (PR-05).
+            # credentials/config) or a generic message (PR-05). A hint naming backend/.env
+            # is wrong for a caller who brought their own key — they have no .env.
             logger.warning("LLM transport failure (attempt %d/%d): %s", attempt + 1, MAX_RETRIES, e)
-            last_error = {"error": e.hint or _GENERIC_UNAVAILABLE, "retryable": e.retryable}
+            hint = _BYOK_REJECTED if (e.hint and has_request_credentials()) else e.hint
+            last_error = {"error": hint or _GENERIC_UNAVAILABLE, "retryable": e.retryable}
             if not e.retryable:
                 return last_error
             time.sleep(RETRY_DELAY_SECONDS * (attempt + 1))

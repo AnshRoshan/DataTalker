@@ -33,6 +33,11 @@ DataTalker:
   front of its whole model catalog), or any OpenAI-compatible endpoint (OpenAI, Azure, vLLM,
   Ollama, LiteLLM) via `LLM_PROVIDER=openai`. Pick the model from the Settings panel — the
   list comes from the provider itself, and the choice applies to the next question.
+- **Bring your own key** — a deployed instance needs **no model key of its own**. Each
+  visitor can paste their OpenRouter / Gemini / OpenAI key in Settings; it travels as a
+  request header, is held in their browser, and the server keeps it for that request only —
+  never written to disk, never in the audit log, never echoed back. Without a visitor key it
+  falls back to the operator's configured one.
 - **Self-hostable** — one Docker image, one volume, your keys, your data.
 
 ## Quick start (self-host, one container)
@@ -65,6 +70,14 @@ uv run uvicorn main:fastapi_app --port 8000
 cd frontend && bun install && bun run dev   # http://localhost:5173
 ```
 
+### On a PaaS (Fly, Render, Railway, Koyeb, Rollout, …)
+
+Point it at this repo — the root `Dockerfile` is auto-detected — and set the **listening
+port to 8000**. Attach a persistent volume if you want saved connections and the audit log to
+survive a redeploy; skip the managed-Postgres/Redis/S3 add-ons, this app has no app-database.
+For a public instance where every visitor brings their own model key, set no `LLM_*` vars and
+`DATATALKER_REQUIRE_API_KEY=false`.
+
 ## Using it
 
 1. Open the UI → **Connections** → add a connection (paste a URL like
@@ -82,6 +95,7 @@ cd frontend && bun install && bun run dev   # http://localhost:5173
 | Variable | Default | Purpose |
 |---|---|---|
 | `DATATALKER_API_KEY` | — (required) | Shared secret clients send as `Authorization: Bearer` |
+| `DATATALKER_REQUIRE_API_KEY` | `true` | Set `false` to open the data routes on a public bring-your-own-key instance — anyone who finds the URL can then query it |
 | `DATATALKER_DB_DIR` | `backend/` | Where server-path SQLite files must live |
 | `DATATALKER_MAX_QUERY_ROWS` | `500` | Hard server-side row cap |
 | `DATATALKER_RATE_LIMIT_REQUESTS` | `30` / `60s` | Per-IP rate limit (0 = off) |
@@ -94,6 +108,11 @@ cd frontend && bun install && bun run dev   # http://localhost:5173
 LLM (no prefix): `LLM_PROVIDER=gemini|openrouter|openai`, `LLM_MODEL`, `LLM_API_KEY`,
 `LLM_BASE_URL` (only `openai` needs a base URL; `openrouter` pins its own). Model choice from
 the UI overrides `LLM_MODEL` at runtime (`GET /llm/models`, `POST|DELETE /llm/model`).
+
+**Bring your own key** (no operator LLM config needed): send `X-LLM-Provider`
+(`gemini|openrouter|openai`) and `X-LLM-Key` on any data route. The key is used for that
+request alone — never cached, never logged, never returned — and the provider's base URL is
+chosen by preset, so a caller cannot point your server at an arbitrary endpoint.
 
 ### Optional database drivers
 

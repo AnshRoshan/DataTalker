@@ -14,7 +14,15 @@ def require_api_key(authorization: Optional[str] = Header(None)) -> None:
 
     ponytail: a single env-configured key (matches the Bearer token the frontend already
     sends). Per-user auth / RBAC is a later phase; this just closes the open data plane.
+    Set DATATALKER_REQUIRE_API_KEY=false to open it — only sensible for a public
+    bring-your-own-key demo, where anyone who finds the URL can query registered databases.
+
+    (Bring-your-own LLM keys are bound per request by LlmCredentialsMiddleware, not here.)
     """
+    from core.settings import get_settings
+
+    if not get_settings().require_api_key:
+        return
     expected = os.getenv("DATATALKER_API_KEY")
     if not expected:
         raise HTTPException(status_code=503, detail="Server authentication is not configured (set DATATALKER_API_KEY).")

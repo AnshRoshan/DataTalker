@@ -1,7 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
+import { byokHeaders, setLlmCredentials } from '../lib/api';
+import { loadLlmCredentials, saveLlmCredentials } from '../lib/storage';
 import type { HealthStatus } from '../types';
 import { Field, Spinner, buttonGhost, buttonPrimary, inputClass } from './ui';
+
+/** Mirrors the backend's fixed provider presets (llm/request_provider.py). */
+const LLM_PROVIDERS = [
+  { value: '', label: "Use the server's key" },
+  { value: 'openrouter', label: 'OpenRouter' },
+  { value: 'gemini', label: 'Google Gemini' },
+  { value: 'openai', label: 'OpenAI' },
+];
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -39,10 +49,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   const [pickedModel, setPickedModel] = useState('');
   const [modelSaving, setModelSaving] = useState(false);
   const [modelNotice, setModelNotice] = useState<string | null>(null);
+  const [byok, setByok] = useState(() => loadLlmCredentials());
 
   const authHeaders = () => ({
     Authorization: `Bearer ${draft.apiKey}`,
     'Content-Type': 'application/json',
+    ...byokHeaders(byok),
   });
   const baseUrl = () => draft.apiUrl.replace(/\/$/, '');
 
@@ -50,15 +62,25 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setDraft({ apiUrl, apiKey });
+      setByok(loadLlmCredentials());
       setTestResult(null);
       setModelNotice(null);
     }
   }, [isOpen, apiUrl, apiKey]);
 
-  const loadModels = async () => {
+  /** Persist the browser-side model key and start sending it on every request. */
+  const applyByok = (next: typeof byok) => {
+    setByok(next);
+    saveLlmCredentials(next);
+    setLlmCredentials(next);
+  };
+
+  const loadModels = async (creds = byok) => {
     setModelsLoading(true);
     try {
-      const res = await fetch(`${baseUrl()}/llm/models`, { headers: { Authorization: `Bearer ${draft.apiKey}` } });
+      const res = await fetch(`${baseUrl()}/llm/models`, {
+        headers: { Authorization: `Bearer ${draft.apiKey}`, ...byokHeaders(creds) },
+      });
       const body = (await res.json()) as LlmModelsResponse;
       setLlm(res.ok ? body : null);
       setPickedModel(body.model ?? '');
@@ -71,6 +93,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     }
   };
 
+  // Load once when the modal opens (and when the connection changes). Deliberately NOT
+  // keyed on the typed key: that fired a catalog request per keystroke, and a response
+  // arriving after the next keystroke rewrote the form under the user.
   useEffect(() => {
     if (isOpen) void loadModels();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -208,6 +233,40 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
               placeholder="DATATALKER_API_KEY value"
               autoComplete="off"
             />
+          </Field>
+
+          <Field
+            label="Model provider key"
+            htmlFor="settings-llm-provider"
+            hint="Optional. Bring your own key: it is sent with each request and held in this browser only — never stored by the server. Leave blank to use the key the deployment was configured with."
+          >
+            <div className="flex gap-2">
+              <select
+                id="settings-llm-provider"
+                value={byok.provider}
+                onChange={e => {
+                  const next = { ...byok, provider: e.target.value };
+                  applyByok(next);
+                  void loadModels(next);
+                }}
+                className={`${inputClass} w-40 shrink-0`}
+              >
+                {LLM_PROVIDERS.map(p => (
+                  <option key={p.value || 'server'} value={p.value}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="password"
+                value={byok.apiKey}
+                onChange={e => applyByok({ ...byok, apiKey: e.target.value })}
+                className={`${inputClass} font-display`}
+                placeholder={byok.provider ? 'sk-or-v1-… / your provider key' : 'using the server key'}
+                disabled={!byok.provider}
+                autoComplete="off"
+              />
+            </div>
           </Field>
 
           <Field

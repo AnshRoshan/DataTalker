@@ -73,8 +73,10 @@ class HealthResponse(BaseModel):
     status: str
     message: str
     version: Optional[str] = None
+    llm_mode: Optional[str] = None  # operator-or-byok | byok-only
     llm_provider: Optional[str] = None
     llm_model: Optional[str] = None
+    auth: Optional[str] = None  # required | disabled
 
 
 class LLMModelEntry(BaseModel):

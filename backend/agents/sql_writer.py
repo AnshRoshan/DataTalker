@@ -105,7 +105,7 @@ class SQLWriterAgent:
         elif "error" in llm_result:
             logger.warning("Error from LLM: %s", llm_result["error"])
             # Propagate the error from the LLM
-            state["error"] = f"LLM Error: {llm_result['error']}"
+            state["error"] = llm_result["error"]
             state["sql_needed"] = False
         else:
             # Unexpected result format from LLM

@@ -38,7 +38,8 @@ backend/
     sql_writer.py  validator.py  db_executor.py  answer.py
     schema.py  user_input.py  fallback.py  sql_retry.py
   llm/                    pluggable LLM layer (EC-01): base.py protocol, providers/ (gemini,
-                          openai_compat), factory.py (env-driven: gemini|openrouter|openai),
+                          openai_compat), factory.py (env + per-request credentials),
+                          request_provider.py (bring-your-own X-LLM-* key, presets, middleware),
                           selection.py (model catalog + runtime model pick), prompts.py
                           (dialect-aware), service.py (the 2 funcs agents call; retry loop lives here)
   core/
@@ -88,9 +89,15 @@ frontend/                 React 19 + Vite 6 + Tailwind 4, package manager = bun
   configured provider serves and which one is picked. The provider (base URL + key) stays
   operator config from `.env`; only the model id changes, persisted to
   `DATATALKER_DATA_DIR/model_selection.json` and applied by `llm/factory.get_provider()`.
+- **Bring-your-own-key headers** — any data route accepts `X-LLM-Provider`
+  (`gemini|openrouter|openai`) + `X-LLM-Key` (+ optional `X-LLM-Model`), bound to that
+  request by `LlmCredentialsMiddleware` and cleared on exit. Base URLs come from a fixed
+  preset map, so a caller cannot steer this server to an endpoint of their choosing; an
+  unknown provider is a 400 rather than a silent fallback to the operator's key.
 - `GET /schema/cache`, `DELETE /schema/cache` — inspect / clear the schema cache.
-- `GET /` (info), `GET /health` (real readiness: 200 healthy / 503 degraded if settings or
-  the LLM provider can't be built; reports the provider + model in use, never a key).
+- `GET /` (info), `GET /health` (readiness: 200 with `llm_mode` = `operator-or-byok` or
+  `byok-only` — an instance with no operator key is a supported shape, not a failure —
+  and `auth` = `required|disabled`; 503 only when settings cannot load).
 
 DB reference resolution priority (`api/dependencies.py`): explicit refs > `connection_id`.
 - `db_path` = an **absolute path on the SERVER's filesystem**, confined to

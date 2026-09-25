@@ -128,7 +128,21 @@ export function saveActiveDbRef(ref: ActiveDbRef | null): void {
   }
 }
 
-const DEFAULT_URL = 'http://127.0.0.1:8000';
+// The API serves this bundle, so a deployed instance is same-origin and needs no
+// configuration. Vite's dev server is the one place the API lives on another port.
+const FALLBACK_URL = 'http://127.0.0.1:8000';
+
+function defaultApiUrl(): string {
+  try {
+    const { protocol, host, port } = window.location;
+    if (!protocol.startsWith('http') || port === '5173') return FALLBACK_URL;
+    return `${protocol}//${host}`;
+  } catch {
+    return FALLBACK_URL;
+  }
+}
+
+const DEFAULT_URL = defaultApiUrl();
 
 export function loadApiUrl(): string {
   try {

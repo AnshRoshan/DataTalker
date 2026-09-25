@@ -10,7 +10,6 @@ import type {
   SchemaGraphResponse,
 } from '../types';
 
-export const DEFAULT_API_URL = 'http://127.0.0.1:8000';
 export const REQUEST_TIMEOUT_MS = 120_000;
 
 /** How many previous turns are sent to the backend for context. */

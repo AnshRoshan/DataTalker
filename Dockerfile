@@ -1,7 +1,8 @@
 # DataTalker — self-hostable, single-container image.
 # Stage 1 builds the React SPA with bun; stage 2 runs the FastAPI API and serves the
-# built SPA from the same process (see main.py _mount_spa). Build context = repo root:
-#   docker build -f backend/Dockerfile -t datatalker .
+# built SPA from the same process (see backend/main.py _mount_spa). Build context is the
+# repo root, and this file lives there so Git-based builders find it without being told:
+#   docker build -t datatalker .
 # Single worker keeps the in-process schema cache coherent (see audit PR-04).
 
 # ---- Stage 1: frontend -------------------------------------------------------

@@ -73,6 +73,12 @@ fake = with_fake(LLMError("bad envelope", retryable=False))
 r = svc.generate_sql_or_response("s", "q")
 assert "error" in r and fake.calls == 1, "non-retryable transport error must not be retried"
 
+# a provider hint (rejected credentials) replaces the generic message — actionable,
+# secret-free, and tried once.
+fake = with_fake(LLMError("Gemini API error 400: API key not valid", retryable=False, hint="Set a valid GEMINI_API_KEY."))
+r = svc.generate_sql_or_response("s", "q")
+assert r["error"] == "Set a valid GEMINI_API_KEY." and r["retryable"] is False and fake.calls == 1
+
 # transport error then success -> recovered
 fake = with_fake(LLMError("blip"), '{"sql": "SELECT 4"}')
 assert svc.generate_sql_or_response("s", "q")["sql"] == "SELECT 4" and fake.calls == 2

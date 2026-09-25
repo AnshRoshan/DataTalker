@@ -2,9 +2,14 @@
 """Google Gemini via the public generateContent REST API (no SDK, matches pre-refactor)."""
 import requests
 
-from llm.base import LLMError
+from llm.base import LLMError, credential_rejection
 
 _TIMEOUT_SECONDS = 60
+
+_KEY_HINT = (
+    "Google rejected the configured Gemini key. Set a valid GEMINI_API_KEY in "
+    "backend/.env, or switch providers (LLM_PROVIDER=openrouter|openai)."
+)
 
 
 class GeminiProvider:
@@ -34,7 +39,12 @@ class GeminiProvider:
         except requests.exceptions.RequestException as e:
             raise LLMError(f"Network error calling Gemini: {e}") from e
         if response.status_code != 200:
-            raise LLMError(f"Gemini API error {response.status_code}: {response.text[:500]}")
+            rejected = credential_rejection(response.status_code, response.text)
+            raise LLMError(
+                f"Gemini API error {response.status_code}: {response.text[:500]}",
+                retryable=not rejected,
+                hint=_KEY_HINT if rejected else "",
+            )
         try:
             return response.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
         except (KeyError, IndexError, TypeError, ValueError, AttributeError) as e:

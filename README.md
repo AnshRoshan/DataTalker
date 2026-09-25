@@ -29,8 +29,10 @@ DataTalker:
 - **Governance-lite** — optional table allowlist + column masking (full/partial/hash);
   **semantic layer** — optional YAML glossary of descriptions, synonyms, and metric
   definitions that steers the LLM.
-- **Pluggable LLM** — Google Gemini by default, or any OpenAI-compatible endpoint
-  (OpenAI, Azure, vLLM, Ollama, LiteLLM) via `LLM_PROVIDER=openai`.
+- **Pluggable LLM** — Google Gemini, **OpenRouter** (`LLM_PROVIDER=openrouter`, one key in
+  front of its whole model catalog), or any OpenAI-compatible endpoint (OpenAI, Azure, vLLM,
+  Ollama, LiteLLM) via `LLM_PROVIDER=openai`. Pick the model from the Settings panel — the
+  list comes from the provider itself, and the choice applies to the next question.
 - **Self-hostable** — one Docker image, one volume, your keys, your data.
 
 ## Quick start (self-host, one container)
@@ -38,15 +40,19 @@ DataTalker:
 ```bash
 # 1. Configure (two env vars are required)
 cat > backend/.env <<'EOF'
-GEMINI_API_KEY=your-google-ai-studio-key        # or: LLM_PROVIDER=openai + LLM_BASE_URL/LLM_API_KEY/LLM_MODEL
 DATATALKER_API_KEY=<run: python -c "import secrets; print(secrets.token_urlsafe(32))">
+
+# One of these three LLM configurations:
+GEMINI_API_KEY=your-google-ai-studio-key                                  # default provider
+# LLM_PROVIDER=openrouter   + LLM_API_KEY=sk-or-...                      # any OpenRouter model
+# LLM_PROVIDER=openai       + LLM_API_KEY/LLM_BASE_URL/LLM_MODEL         # OpenAI/Azure/vLLM/Ollama
 EOF
 
 # 2. Build the frontend (or skip and use the API directly)
 cd frontend && bun install && bun run build && cd ..
 
 # 3. Run
-docker compose -f backend/docker-compose.yml up --build
+docker compose up --build
 # API on http://localhost:8000 — send: Authorization: Bearer $DATATALKER_API_KEY
 ```
 
@@ -67,6 +73,9 @@ cd frontend && bun install && bun run dev   # http://localhost:5173
 2. Ask questions in the chat. Follow-ups keep context. Answers show the SQL and the rows.
 3. Explore the **Schema** view: tables, columns, and how they connect (foreign keys +
    inferred joins).
+4. Want a different model? **Settings → Model** lists what your provider serves (an
+   OpenRouter or OpenAI-compatible key exposes its whole catalog) — the choice is stored
+   server-side and applies to the next question. `RESET` falls back to `LLM_MODEL`.
 
 ### Configuration (env vars, prefix `DATATALKER_`)
 
@@ -82,7 +91,9 @@ cd frontend && bun install && bun run dev   # http://localhost:5173
 | `DATATALKER_GOVERNANCE_FILE` | — | JSON: allowed tables + masked columns |
 | `DATATALKER_SEMANTIC_FILE` | — | YAML glossary: descriptions, synonyms, metrics |
 
-LLM (no prefix): `LLM_PROVIDER=gemini|openai`, `LLM_MODEL`, `LLM_API_KEY`, `LLM_BASE_URL`.
+LLM (no prefix): `LLM_PROVIDER=gemini|openrouter|openai`, `LLM_MODEL`, `LLM_API_KEY`,
+`LLM_BASE_URL` (only `openai` needs a base URL; `openrouter` pins its own). Model choice from
+the UI overrides `LLM_MODEL` at runtime (`GET /llm/models`, `POST|DELETE /llm/model`).
 
 ### Optional database drivers
 

@@ -21,6 +21,9 @@ from .models import (
     ConnectionOut,
     ConnectionListResponse,
     ConnectionCheckResponse,
+    LLMModelsResponse,
+    LLMModelSelect,
+    LLMModelSelection,
 )
 from services.schema_service import SchemaService
 from services.query_service import QueryService
@@ -303,6 +306,35 @@ def create_endpoints(app: FastAPI, serve_spa: bool = False) -> None:
             "last_status": status,
         })
 
+    @app.get("/llm/models", response_model=LLMModelsResponse, dependencies=[Depends(require_api_key)])
+    def list_llm_models_endpoint():
+        """Which models the configured provider serves — OpenRouter or any
+        OpenAI-compatible gateway exposes its whole catalog through one key.
+        Listing failures come back as an empty list, never a 500."""
+        from llm.selection import list_models
+
+        return list_models()
+
+    @app.post("/llm/model", response_model=LLMModelSelection, dependencies=[Depends(require_api_key)])
+    def select_llm_model_endpoint(body: LLMModelSelect):
+        """Pick the model used by subsequent questions. The provider (and therefore
+        the base URL and key) stays operator config; only the model id changes."""
+        from llm.selection import SelectionError, provider_name, set_selected_model
+
+        try:
+            model = set_selected_model(body.model)
+        except SelectionError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        return JSONResponse(content={"provider": provider_name(), "model": model})
+
+    @app.delete("/llm/model", response_model=LLMModelSelection, dependencies=[Depends(require_api_key)])
+    def clear_llm_model_endpoint():
+        """Drop the runtime pick and fall back to LLM_MODEL from the environment."""
+        from llm.selection import clear_selected_model, provider_name
+
+        clear_selected_model()
+        return JSONResponse(content={"provider": provider_name(), "model": None})
+
     @app.get("/schema/cache", response_model=CacheResponse, dependencies=[Depends(require_api_key)])
     async def get_schema_cache_info():
         """Get information about cached schemas."""
@@ -359,18 +391,22 @@ def create_endpoints(app: FastAPI, serve_spa: bool = False) -> None:
         try:
             from llm.factory import get_provider
 
-            get_provider()  # raises RuntimeError on missing/misconfigured LLM env
+            provider = get_provider()  # raises RuntimeError on missing/misconfigured LLM env
             llm_ok, reason = True, ""
         except Exception as e:
-            llm_ok, reason = False, str(e)
+            provider, llm_ok, reason = None, False, str(e)
         if not llm_ok:
             # Keep the message free of credential values — factory errors name env vars only.
             return JSONResponse(
                 status_code=503,
                 content={"status": "degraded", "message": f"LLM provider unavailable: {reason}"},
             )
+        from llm.selection import provider_name
+
         return {
             "status": "healthy",
             "message": "API is running",
             "version": settings.api_version,
+            "llm_provider": provider_name(),
+            "llm_model": getattr(provider, "model", None),
         }

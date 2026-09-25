@@ -37,11 +37,15 @@ class _FakeRequests:
         return self.resp
 
 
-def expect_llm_error(fn, retryable):
+def expect_llm_error(fn, retryable, hint=None):
     try:
         fn()
     except LLMError as e:
         assert e.retryable is retryable, f"retryable={e.retryable}, want {retryable}"
+        if hint is not None:
+            assert hint in e.hint, f"hint {e.hint!r} should name {hint!r}"
+        else:
+            assert e.hint == "", f"unexpected hint {e.hint!r}"
         return
     raise AssertionError("expected LLMError")
 
@@ -78,6 +82,18 @@ expect_llm_error(lambda: p.complete("s", "u"), retryable=False)
 gemini_mod.requests = _FakeRequests(raise_exc=_FakeRequests.exceptions.ConnectionError("down"))
 expect_llm_error(lambda: p.complete("s", "u"), retryable=True)
 
+# rejected key (Gemini answers this with 400 + "API key not valid") -> NON-retryable + hint
+gemini_mod.requests = _FakeRequests(_Resp(400, {"error": {"message": "API key not valid."}}))
+expect_llm_error(lambda: p.complete("s", "u"), retryable=False, hint="GEMINI_API_KEY")
+
+# 403 is auth too, even when the body says nothing about keys
+gemini_mod.requests = _FakeRequests(_Resp(403, {"error": {"status": "PERMISSION_DENIED"}}))
+expect_llm_error(lambda: p.complete("s", "u"), retryable=False, hint="GEMINI_API_KEY")
+
+# a 400 about the REQUEST (not the key) stays retryable and hintless
+gemini_mod.requests = _FakeRequests(_Resp(400, {"error": {"message": "Cannot extract a valid JSON"}}))
+expect_llm_error(lambda: p.complete("s", "u"), retryable=True)
+
 # ---------- OpenAICompatProvider ----------
 ok_openai = _Resp(200, {"choices": [{"message": {"content": " hi there "}}]})
 fake = _FakeRequests(ok_openai)
@@ -108,5 +124,9 @@ openai_mod.requests = _FakeRequests(_Resp(200, {"choices": [{"message": {"conten
 expect_llm_error(lambda: q.complete("s", "u"), retryable=False)
 openai_mod.requests = _FakeRequests(raise_exc=_FakeRequests.exceptions.Timeout("slow"))
 expect_llm_error(lambda: q.complete("s", "u"), retryable=True)
+
+# rejected key on an OpenAI-compatible gateway (401) -> NON-retryable + hint naming the vars
+openai_mod.requests = _FakeRequests(_Resp(401, {"error": {"message": "Incorrect API key provided"}}))
+expect_llm_error(lambda: q.complete("s", "u"), retryable=False, hint="LLM_API_KEY")
 
 print("llm_providers: all assertions passed")

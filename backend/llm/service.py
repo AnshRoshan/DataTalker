@@ -100,9 +100,10 @@ def _complete_with_retries(
         try:
             text = get_provider().complete(system, user)
         except LLMError as e:
-            # Full detail to logs only; clients get a generic message (PR-05).
+            # Full detail to logs only; clients get the actionable hint (rejected
+            # credentials/config) or a generic message (PR-05).
             logger.warning("LLM transport failure (attempt %d/%d): %s", attempt + 1, MAX_RETRIES, e)
-            last_error = {"error": _GENERIC_UNAVAILABLE, "retryable": e.retryable}
+            last_error = {"error": e.hint or _GENERIC_UNAVAILABLE, "retryable": e.retryable}
             if not e.retryable:
                 return last_error
             time.sleep(RETRY_DELAY_SECONDS * (attempt + 1))

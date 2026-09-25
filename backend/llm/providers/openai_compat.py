@@ -2,9 +2,14 @@
 """Any /chat/completions-compatible endpoint: OpenAI, Azure, vLLM, Ollama, LiteLLM proxy."""
 import requests
 
-from llm.base import LLMError
+from llm.base import LLMError, credential_rejection
 
 _TIMEOUT_SECONDS = 60
+
+_KEY_HINT = (
+    "The LLM endpoint rejected the request. Check LLM_API_KEY / LLM_MODEL / LLM_BASE_URL "
+    "in backend/.env."
+)
 
 
 class OpenAICompatProvider:
@@ -37,7 +42,12 @@ class OpenAICompatProvider:
         except requests.exceptions.RequestException as e:
             raise LLMError(f"Network error calling LLM endpoint: {e}") from e
         if response.status_code != 200:
-            raise LLMError(f"LLM API error {response.status_code}: {response.text[:500]}")
+            rejected = credential_rejection(response.status_code, response.text)
+            raise LLMError(
+                f"LLM API error {response.status_code}: {response.text[:500]}",
+                retryable=not rejected,
+                hint=_KEY_HINT if rejected else "",
+            )
         try:
             return response.json()["choices"][0]["message"]["content"].strip()
         except (KeyError, IndexError, TypeError, ValueError, AttributeError) as e:

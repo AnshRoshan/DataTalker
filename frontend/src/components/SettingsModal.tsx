@@ -11,6 +11,18 @@ interface SettingsModalProps {
   onSave: (settings: { apiUrl: string; apiKey: string }) => void;
 }
 
+interface LlmModelEntry {
+  id: string;
+  label?: string;
+}
+
+interface LlmModelsResponse {
+  provider: string;
+  model: string | null;
+  models: LlmModelEntry[];
+  error?: string | null;
+}
+
 /** API URL + API key modal. Escape closes; Enter in a field saves. */
 const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
@@ -22,14 +34,82 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   const [draft, setDraft] = useState({ apiUrl, apiKey });
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<HealthStatus | null>(null);
+  const [llm, setLlm] = useState<LlmModelsResponse | null>(null);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [pickedModel, setPickedModel] = useState('');
+  const [modelSaving, setModelSaving] = useState(false);
+  const [modelNotice, setModelNotice] = useState<string | null>(null);
+
+  const authHeaders = () => ({
+    Authorization: `Bearer ${draft.apiKey}`,
+    'Content-Type': 'application/json',
+  });
+  const baseUrl = () => draft.apiUrl.replace(/\/$/, '');
 
   // Resync the draft whenever the modal is (re)opened.
   useEffect(() => {
     if (isOpen) {
       setDraft({ apiUrl, apiKey });
       setTestResult(null);
+      setModelNotice(null);
     }
   }, [isOpen, apiUrl, apiKey]);
+
+  const loadModels = async () => {
+    setModelsLoading(true);
+    try {
+      const res = await fetch(`${baseUrl()}/llm/models`, { headers: { Authorization: `Bearer ${draft.apiKey}` } });
+      const body = (await res.json()) as LlmModelsResponse;
+      setLlm(res.ok ? body : null);
+      setPickedModel(body.model ?? '');
+      if (!res.ok) setModelNotice('Could not read the model list from the backend.');
+    } catch {
+      setLlm(null);
+      setModelNotice('Could not reach the backend.');
+    } finally {
+      setModelsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) void loadModels();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, apiUrl, apiKey]);
+
+  const applyModel = async () => {
+    if (!pickedModel) return;
+    setModelSaving(true);
+    setModelNotice(null);
+    try {
+      const res = await fetch(`${baseUrl()}/llm/model`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ model: pickedModel }),
+      });
+      if (!res.ok) {
+        const body = (await res.json()) as { detail?: string };
+        setModelNotice(body.detail ?? 'The backend rejected that model.');
+      } else {
+        setModelNotice(`Questions will be answered by ${pickedModel}.`);
+        void loadModels();
+      }
+    } catch {
+      setModelNotice('Could not reach the backend.');
+    } finally {
+      setModelSaving(false);
+    }
+  };
+
+  const resetModel = async () => {
+    setModelSaving(true);
+    setModelNotice(null);
+    try {
+      await fetch(`${baseUrl()}/llm/model`, { method: 'DELETE', headers: authHeaders() });
+      void loadModels();
+    } finally {
+      setModelSaving(false);
+    }
+  };
 
   // Escape closes the modal.
   useEffect(() => {
@@ -128,6 +208,74 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
               placeholder="DATATALKER_API_KEY value"
               autoComplete="off"
             />
+          </Field>
+
+          <Field
+            label="Model"
+            htmlFor="settings-model"
+            hint={
+              llm
+                ? `Provider: ${llm.provider}. The model list comes from the backend, so an OpenRouter or OpenAI-compatible key exposes its whole catalog.`
+                : 'Choose a model to answer your questions.'
+            }
+          >
+            <div className="flex gap-2">
+              {llm && llm.models.length > 0 ? (
+                <select
+                  id="settings-model"
+                  value={llm.models.some(m => m.id === pickedModel) ? pickedModel : ''}
+                  onChange={e => setPickedModel(e.target.value)}
+                  className={inputClass}
+                >
+                  {llm.models.some(m => m.id === pickedModel) ? null : (
+                    <option value="">{pickedModel || 'Current model'}</option>
+                  )}
+                  {llm.models.map(m => (
+                    <option key={m.id} value={m.id}>
+                      {m.label && m.label !== m.id ? `${m.label} — ${m.id}` : m.id}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  id="settings-model"
+                  type="text"
+                  value={pickedModel}
+                  onChange={e => setPickedModel(e.target.value)}
+                  className={inputClass}
+                  placeholder="e.g. openai/gpt-4o-mini"
+                  spellCheck={false}
+                />
+              )}
+              <button
+                type="button"
+                onClick={() => void applyModel()}
+                disabled={modelSaving || !pickedModel || pickedModel === llm?.model}
+                className={`${buttonPrimary} shrink-0`}
+              >
+                {modelSaving ? <Spinner /> : null}
+                Use
+              </button>
+            </div>
+            <div className="mt-1 flex items-center justify-between gap-2">
+              <p className="text-[12px] text-fg/50">
+                {llm?.error
+                  ? llm.error
+                  : modelNotice ??
+                    (llm?.model ? `In use: ${llm.model}` : modelsLoading ? 'Loading models…' : 'No model list available.')}
+              </p>
+              <div className="flex shrink-0 gap-1">
+                <button type="button" onClick={() => void loadModels()} disabled={modelsLoading} className={buttonGhost}>
+                  {modelsLoading ? <Spinner /> : null}
+                  Refresh
+                </button>
+                {llm?.model ? (
+                  <button type="button" onClick={() => void resetModel()} disabled={modelSaving} className={buttonGhost}>
+                    Reset
+                  </button>
+                ) : null}
+              </div>
+            </div>
           </Field>
 
           <div className="flex justify-end gap-2 border-t border-border/30 pt-3">

@@ -177,7 +177,7 @@ const ResultsTable: React.FC<ResultsTableProps> = ({ results }) => {
   const groupedResults: { headers: string[]; rows: Record<string, unknown>[] }[] = [];
 
   for (const row of objectRows) {
-    const rowHeaders = Object.keys(row).sort();
+    const rowHeaders = Object.keys(row);
     const existingGroup = groupedResults.find(
       group =>
         group.headers.length === rowHeaders.length &&

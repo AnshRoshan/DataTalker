@@ -73,6 +73,33 @@ class HealthResponse(BaseModel):
     status: str
     message: str
     version: Optional[str] = None
+    llm_provider: Optional[str] = None
+    llm_model: Optional[str] = None
+
+
+class LLMModelEntry(BaseModel):
+    """One selectable model from the provider's catalog."""
+    id: str
+    label: Optional[str] = None
+
+
+class LLMModelsResponse(BaseModel):
+    """Response model for GET /llm/models."""
+    provider: str
+    model: Optional[str] = None
+    models: List[LLMModelEntry] = []
+    error: Optional[str] = None
+
+
+class LLMModelSelect(BaseModel):
+    """Request body for POST /llm/model."""
+    model: str = Field(..., description="Model id from the provider catalog")
+
+
+class LLMModelSelection(BaseModel):
+    """Response model for POST/DELETE /llm/model."""
+    provider: str
+    model: Optional[str] = None
 
 
 class ConnectionCreate(BaseModel):

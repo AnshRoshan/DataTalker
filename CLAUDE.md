@@ -16,7 +16,7 @@ landed earlier; Phase 3 added env-driven settings, pooled DB engines, rate limit
 timeouts, real `/health`, audit log, governance-lite, semantic layer, MySQL, chat history.
 Phase 4 added: **schema graph + relevance retrieval** (huge schemas are pruned per-question),
 a **connections registry** with **preflight checks**, and **universal SQLAlchemy URL support**
-(any dialect; extras for mssql/oracle/snowflake). All 22 `backend/test_*.py` scripts pass; the
+(any dialect; extras for mssql/oracle/snowflake). All 23 `backend/test_*.py` scripts pass; the
 full pipeline is verified end-to-end against the bundled fixtures.
 
 ## Repo layout (all of it is real now — the dead "enterprise" stack and legacy UI are gone)
@@ -38,8 +38,9 @@ backend/
     sql_writer.py  validator.py  db_executor.py  answer.py
     schema.py  user_input.py  fallback.py  sql_retry.py
   llm/                    pluggable LLM layer (EC-01): base.py protocol, providers/ (gemini,
-                          openai_compat), factory.py (env-driven), prompts.py (dialect-aware),
-                          service.py (the 2 funcs agents call; retry loop lives here)
+                          openai_compat), factory.py (env-driven: gemini|openrouter|openai),
+                          selection.py (model catalog + runtime model pick), prompts.py
+                          (dialect-aware), service.py (the 2 funcs agents call; retry loop lives here)
   core/
     settings.py           pydantic-settings (env + backend/.env, DATATALKER_ prefix) — single config source
     engines.py            pooled SQLAlchemy engines per db_uri (bounded, TTL-evicted); SQLite query_only pin
@@ -59,7 +60,7 @@ backend/
   Database/PopulateDB.py  Faker-based sample-data generator
   hospital.db, multi_table.db   ready-to-use SQLite fixtures
   governance.example.json  semantic.hospital.yml   ← example configs for the two optional features
-  test_*.py               18 assert-based test scripts run directly (`uv run python test_x.py`)
+  test_*.py               23 assert-based test scripts run directly (`uv run python test_x.py`)
 
 frontend/                 React 19 + Vite 6 + Tailwind 4, package manager = bun
   src/App.tsx             single sendQuestion() flow; history, abort/timeout, persistence
@@ -83,9 +84,13 @@ frontend/                 React 19 + Vite 6 + Tailwind 4, package manager = bun
   saved-connection registry; full connection strings NEVER leave the server (masked URIs
   only). Creating a connection runs the preflight; failures are rejected with the
   structured error.
+- `GET /llm/models`, `POST /llm/model` `{model}`, `DELETE /llm/model` — which models the
+  configured provider serves and which one is picked. The provider (base URL + key) stays
+  operator config from `.env`; only the model id changes, persisted to
+  `DATATALKER_DATA_DIR/model_selection.json` and applied by `llm/factory.get_provider()`.
 - `GET /schema/cache`, `DELETE /schema/cache` — inspect / clear the schema cache.
 - `GET /` (info), `GET /health` (real readiness: 200 healthy / 503 degraded if settings or
-  the LLM provider can't be built).
+  the LLM provider can't be built; reports the provider + model in use, never a key).
 
 DB reference resolution priority (`api/dependencies.py`): explicit refs > `connection_id`.
 - `db_path` = an **absolute path on the SERVER's filesystem**, confined to
@@ -153,7 +158,9 @@ DATATALKER_MAX_UPLOAD_MB=100, DATATALKER_DB_DIR, DATATALKER_MAX_QUERY_ROWS=500,
 DATATALKER_STATEMENT_TIMEOUT_SECONDS=30, DATATALKER_RATE_LIMIT_REQUESTS=30 (0=off),
 DATATALKER_RATE_LIMIT_WINDOW_SECONDS=60, DATATALKER_AUDIT_LOG_PATH=logs/audit.log (""=off),
 DATATALKER_GOVERNANCE_FILE="" , DATATALKER_SEMANTIC_FILE=""`. LLM config (no prefix):
-`LLM_PROVIDER=gemini|openai`, `LLM_MODEL`, `LLM_API_KEY`, `LLM_BASE_URL`.
+`LLM_PROVIDER=gemini|openrouter|openai`, `LLM_MODEL`, `LLM_API_KEY`, `LLM_BASE_URL`
+(`openrouter` fixes its own base URL; only `openai` supplies one). A model picked through
+`POST /llm/model` overrides `LLM_MODEL` at runtime.
 
 ## Definition of done for changes here
 

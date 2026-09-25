@@ -84,11 +84,17 @@ app = fastapi_app
 
 
 if __name__ == "__main__":
+    import os
+
     import uvicorn
 
     settings = get_settings()
     logger.info("Starting %s v%s", settings.api_title, settings.api_version)
 
     uvicorn.run(
-        "main:fastapi_app", host="0.0.0.0", port=8000, reload=True, log_level="info"
+        "main:fastapi_app",
+        host="0.0.0.0",
+        port=int(os.getenv("PORT", "8000")),
+        reload=True,
+        log_level="info",
     )

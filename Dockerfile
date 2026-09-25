@@ -22,7 +22,11 @@ LABEL org.opencontainers.image.title="DataTalker" \
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    UV_LINK_MODE=copy
+    UV_LINK_MODE=copy \
+    # Platforms (Rollout, Fly, Render, Heroku-style) assign the port at runtime and
+    # probe that number — binding a hardcoded 8000 makes the app look dead. PORT is the
+    # override; 8000 keeps plain `docker run` and the compose file working unchanged.
+    PORT=8000
 
 RUN pip install --no-cache-dir uv && useradd --create-home app
 
@@ -45,7 +49,9 @@ USER app
 VOLUME ["/app/backend/data", "/app/backend/logs"]
 
 EXPOSE 8000
-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD python -c "import urllib.request as u,sys; sys.exit(0 if u.urlopen('http://localhost:8000/health').status==200 else 1)"
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+    CMD python -c "import os,urllib.request as u,sys; url='http://127.0.0.1:%s/health' % os.environ.get('PORT','8000'); sys.exit(0 if u.urlopen(url, timeout=5).status==200 else 1)"
 
-CMD ["uv", "run", "--no-sync", "uvicorn", "main:fastapi_app", "--host", "0.0.0.0", "--port", "8000"]
+# Shell form so ${PORT} expands: a platform that injects PORT gets listened on,
+# otherwise the 8000 default above applies.
+CMD uv run --no-sync uvicorn main:fastapi_app --host 0.0.0.0 --port ${PORT}

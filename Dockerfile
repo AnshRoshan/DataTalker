@@ -34,7 +34,10 @@ RUN uv sync --frozen --no-install-project --no-dev
 # App source + built SPA
 COPY backend/ /app/backend/
 COPY --from=web /web/dist /app/frontend/dist
-RUN chown -R app:app /app
+# data/ and logs/ are gitignored (runtime state), so they do not exist in the build
+# context. Without creating them here, a fresh mounted volume is root-owned and the
+# unprivileged app user cannot write the connections registry or the audit log.
+RUN mkdir -p /app/backend/data /app/backend/logs && chown -R app:app /app
 USER app
 
 # Persisted state: connections registry + audit log live here; mount volumes to keep

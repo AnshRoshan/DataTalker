@@ -1,0 +1,1450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+</head>
+<body>
+<title>DataTalker — Product Strategy Briefing</title>
+<style>
+  :root{
+    --bg:#F4F7F6; --bg-2:#FFFFFF; --surface:#FFFFFF; --surface-2:#EDF3F1;
+    --border:#DBE4E1; --border-2:#C9D6D2;
+    --ink:#0C1720; --ink-2:#44525A; --muted:#7B8A90;
+    --accent:#0C9A88; --accent-ink:#087567; --accent-soft:rgba(12,154,136,.10);
+    --amber:#B5760F; --good:#1C9A66; --crit:#C0405A;
+    --good-soft:rgba(28,154,102,.12); --amber-soft:rgba(181,118,15,.13); --crit-soft:rgba(192,64,90,.10);
+    --shadow:0 1px 2px rgba(12,23,32,.06),0 8px 24px -12px rgba(12,23,32,.18);
+    --font-sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --font-mono:ui-monospace,"SF Mono","Cascadia Code","JetBrains Mono",Consolas,"Liberation Mono",monospace;
+    --maxw:1140px;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --bg:#0C131A; --bg-2:#101B23; --surface:#14212B; --surface-2:#1A2A35;
+      --border:#25343F; --border-2:#30424E;
+      --ink:#E7EEF0; --ink-2:#A6B6BD; --muted:#6C8088;
+      --accent:#22C7B0; --accent-ink:#43D6C1; --accent-soft:rgba(34,199,176,.12);
+      --amber:#E3A63A; --good:#33B981; --crit:#DC5E74;
+      --good-soft:rgba(51,185,129,.14); --amber-soft:rgba(227,166,58,.14); --crit-soft:rgba(220,94,116,.13);
+      --shadow:0 1px 2px rgba(0,0,0,.3),0 12px 34px -14px rgba(0,0,0,.6);
+    }
+  }
+  :root[data-theme="light"]{
+    --bg:#F4F7F6; --bg-2:#FFFFFF; --surface:#FFFFFF; --surface-2:#EDF3F1;
+    --border:#DBE4E1; --border-2:#C9D6D2; --ink:#0C1720; --ink-2:#44525A; --muted:#7B8A90;
+    --accent:#0C9A88; --accent-ink:#087567; --accent-soft:rgba(12,154,136,.10);
+    --amber:#B5760F; --good:#1C9A66; --crit:#C0405A;
+    --good-soft:rgba(28,154,102,.12); --amber-soft:rgba(181,118,15,.13); --crit-soft:rgba(192,64,90,.10);
+    --shadow:0 1px 2px rgba(12,23,32,.06),0 8px 24px -12px rgba(12,23,32,.18);
+  }
+  :root[data-theme="dark"]{
+    --bg:#0C131A; --bg-2:#101B23; --surface:#14212B; --surface-2:#1A2A35;
+    --border:#25343F; --border-2:#30424E; --ink:#E7EEF0; --ink-2:#A6B6BD; --muted:#6C8088;
+    --accent:#22C7B0; --accent-ink:#43D6C1; --accent-soft:rgba(34,199,176,.12);
+    --amber:#E3A63A; --good:#33B981; --crit:#DC5E74;
+    --good-soft:rgba(51,185,129,.14); --amber-soft:rgba(227,166,58,.14); --crit-soft:rgba(220,94,116,.13);
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 12px 34px -14px rgba(0,0,0,.6);
+  }
+
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-sans);
+    line-height:1.55;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 24px}
+  a{color:var(--accent-ink);text-decoration:none}
+  a:hover{text-decoration:underline}
+  h1,h2,h3{text-wrap:balance;margin:0}
+  .mono{font-family:var(--font-mono)}
+  .eyebrow{font-family:var(--font-mono);font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--muted);font-weight:600}
+  .tnum{font-variant-numeric:tabular-nums}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+
+  /* ---- top bar ---- */
+  .topbar{position:sticky;top:0;z-index:40;background:color-mix(in srgb,var(--bg) 86%,transparent);
+    backdrop-filter:blur(10px);border-bottom:1px solid var(--border)}
+  .topbar .row{display:flex;align-items:center;justify-content:space-between;height:56px}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:-.01em}
+  .brand .dot{width:9px;height:9px;border-radius:50%;background:var(--accent);
+    box-shadow:0 0 0 3px var(--accent-soft)}
+  .brand small{font-family:var(--font-mono);font-weight:500;color:var(--muted);font-size:11px;letter-spacing:.12em}
+  .toggle{display:inline-flex;align-items:center;gap:7px;background:var(--surface);border:1px solid var(--border);
+    color:var(--ink-2);font-family:var(--font-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+    padding:7px 11px;border-radius:8px;cursor:pointer}
+  .toggle:hover{border-color:var(--border-2);color:var(--ink)}
+
+  /* ---- hero ---- */
+  .hero{padding:60px 0 30px}
+  .hero .kicker{display:flex;gap:10px;align-items:center;margin-bottom:20px;flex-wrap:wrap}
+  .pill{font-family:var(--font-mono);font-size:11px;letter-spacing:.06em;padding:4px 10px;border-radius:999px;
+    border:1px solid var(--border);color:var(--ink-2);background:var(--surface)}
+  .pill.accent{color:var(--accent-ink);border-color:color-mix(in srgb,var(--accent) 40%,var(--border));
+    background:var(--accent-soft)}
+  h1.title{font-size:clamp(30px,5vw,52px);line-height:1.04;letter-spacing:-.025em;font-weight:800;max-width:16ch}
+  h1.title em{font-style:normal;color:var(--accent-ink)}
+  .lede{margin-top:20px;max-width:60ch;font-size:clamp(15px,1.8vw,18px);color:var(--ink-2)}
+  .query{margin-top:26px;font-family:var(--font-mono);font-size:13px;color:var(--muted);
+    border-left:2px solid var(--accent);padding:6px 0 6px 14px;overflow-x:auto;white-space:nowrap}
+  .query .kw{color:var(--accent-ink)}
+  .query .cm{color:var(--crit)}
+
+  /* ---- KPI tiles ---- */
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:36px}
+  .kpi{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px 18px 16px;
+    box-shadow:var(--shadow);position:relative;overflow:hidden}
+  .kpi .big{font-family:var(--font-mono);font-weight:700;font-size:clamp(26px,3.6vw,38px);letter-spacing:-.02em;
+    line-height:1;display:flex;align-items:baseline;gap:6px}
+  .kpi .big .sub{font-size:14px;color:var(--muted);font-weight:500}
+  .kpi .lab{margin-top:9px;font-size:12.5px;color:var(--ink-2);line-height:1.35}
+  .kpi .tag{position:absolute;top:14px;right:14px;font-family:var(--font-mono);font-size:10px;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--muted)}
+  .kpi.crit .big{color:var(--crit)} .kpi.good .big{color:var(--good)} .kpi.accent .big{color:var(--accent-ink)}
+
+  /* ---- sections ---- */
+  section{padding:46px 0}
+  .sec-head{margin-bottom:26px}
+  .sec-head h2{font-size:clamp(21px,2.6vw,28px);letter-spacing:-.02em;font-weight:800;margin-top:8px}
+  .sec-head p{margin:10px 0 0;color:var(--ink-2);max-width:66ch}
+  .rule{height:1px;background:var(--border);border:0;margin:0}
+
+  /* ---- accuracy cliff ---- */
+  .cliff{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:26px 24px;box-shadow:var(--shadow)}
+  .cliff .bar-row{display:grid;grid-template-columns:minmax(150px,220px) 1fr auto;gap:16px;align-items:center;padding:12px 0}
+  .cliff .bar-row+.bar-row{border-top:1px solid var(--border)}
+  .cliff .blab{font-size:13.5px;color:var(--ink-2)}
+  .cliff .blab b{color:var(--ink);display:block;font-size:14px}
+  .cliff .track{height:16px;background:var(--surface-2);border-radius:8px;overflow:hidden}
+  .cliff .fill{height:100%;border-radius:8px;transform-origin:left;animation:grow .9s cubic-bezier(.2,.7,.2,1) both}
+  .cliff .val{font-family:var(--font-mono);font-weight:700;font-size:15px;min-width:78px;text-align:right}
+  @keyframes grow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+  @media (prefers-reduced-motion:reduce){.cliff .fill{animation:none}}
+
+  /* ---- wedge ---- */
+  .wedge{background:linear-gradient(180deg,var(--accent-soft),transparent 70%),var(--surface);
+    border:1px solid color-mix(in srgb,var(--accent) 30%,var(--border));border-radius:18px;padding:28px 26px;box-shadow:var(--shadow)}
+  .wedge h3{font-size:19px;letter-spacing:-.01em}
+  .wedge .chips{display:flex;flex-wrap:wrap;gap:9px;margin:18px 0 4px}
+  .chip{font-family:var(--font-mono);font-size:12px;padding:6px 11px;border-radius:8px;background:var(--bg-2);
+    border:1px solid var(--border);color:var(--ink);letter-spacing:.02em}
+  .chip b{color:var(--accent-ink)}
+  .wedge ul{margin:16px 0 0;padding:0;list-style:none;display:grid;gap:10px}
+  .wedge li{position:relative;padding-left:22px;color:var(--ink-2);font-size:14px}
+  .wedge li::before{content:"▸";position:absolute;left:2px;color:var(--accent);font-size:12px;top:2px}
+  .wedge li b{color:var(--ink)}
+
+  /* ---- gap board (heatmap) ---- */
+  .board-tools{display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between;margin-bottom:18px}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+  .lg{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-2);font-family:var(--font-mono)}
+  .sw{width:12px;height:12px;border-radius:3px;display:inline-block}
+  .sw.good{background:var(--good)} .sw.warn{background:var(--amber)} .sw.crit{background:var(--crit)}
+  .filters{display:flex;gap:7px;flex-wrap:wrap}
+  .fbtn{font-family:var(--font-mono);font-size:11px;letter-spacing:.05em;text-transform:uppercase;padding:6px 11px;
+    border-radius:7px;border:1px solid var(--border);background:var(--surface);color:var(--ink-2);cursor:pointer}
+  .fbtn[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+  .board{display:grid;gap:12px}
+  .catrow{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden}
+  .cathead{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 16px;cursor:default}
+  .cathead .cname{font-weight:700;font-size:14.5px;letter-spacing:-.01em}
+  .cathead .cmeta{display:flex;align-items:center;gap:12px}
+  .minibar{display:flex;height:8px;width:120px;border-radius:5px;overflow:hidden;background:var(--surface-2)}
+  .minibar i{display:block;height:100%}
+  .catcount{font-family:var(--font-mono);font-size:11px;color:var(--muted);min-width:42px;text-align:right}
+  .cells{display:flex;flex-wrap:wrap;gap:7px;padding:0 14px 15px}
+  .cell{position:relative;flex:1 1 150px;min-width:140px;max-width:260px;border-radius:9px;padding:9px 11px;
+    border:1px solid var(--border);background:var(--surface-2);cursor:default;transition:transform .12s,box-shadow .12s}
+  .cell:hover{transform:translateY(-1px);box-shadow:var(--shadow);z-index:2}
+  .cell.good{background:var(--good-soft);border-color:color-mix(in srgb,var(--good) 38%,var(--border))}
+  .cell.warn{background:var(--amber-soft);border-color:color-mix(in srgb,var(--amber) 40%,var(--border))}
+  .cell.crit{background:var(--crit-soft);border-color:color-mix(in srgb,var(--crit) 30%,var(--border))}
+  .cell .top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px}
+  .cell .glyph{font-family:var(--font-mono);font-weight:700;font-size:12px;width:16px;text-align:center}
+  .cell.good .glyph{color:var(--good)} .cell.warn .glyph{color:var(--amber)} .cell.crit .glyph{color:var(--crit)}
+  .cell .ttag{font-family:var(--font-mono);font-size:9.5px;letter-spacing:.08em;color:var(--muted);
+    border:1px solid var(--border);border-radius:5px;padding:1px 5px}
+  .cell .fname{font-size:12.5px;line-height:1.3;color:var(--ink);font-weight:500}
+  .board.dim .cell:not(.match){opacity:.22;filter:saturate(.4)}
+  .board.dim .cell.match{box-shadow:0 0 0 1px var(--accent)}
+
+  /* ---- roadmap ---- */
+  .road{display:grid;gap:0}
+  .phase{display:grid;grid-template-columns:64px 1fr;gap:20px;padding:22px 0;position:relative}
+  .phase+.phase{border-top:1px solid var(--border)}
+  .phase .idx{font-family:var(--font-mono);font-weight:700;font-size:13px;color:var(--bg);background:var(--accent);
+    width:44px;height:44px;border-radius:11px;display:flex;align-items:center;justify-content:center;letter-spacing:.02em}
+  .phase.p0 .idx{background:var(--crit)} .phase.p1 .idx{background:var(--amber)}
+  .phase h3{font-size:17px;letter-spacing:-.01em}
+  .phase .theme{font-family:var(--font-mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-top:2px}
+  .phase .feats{display:flex;flex-wrap:wrap;gap:7px;margin:13px 0}
+  .fchip{font-size:12px;padding:5px 10px;border-radius:7px;background:var(--surface-2);border:1px solid var(--border);color:var(--ink-2)}
+  .phase .out{font-size:13px;color:var(--ink-2);border-left:2px solid var(--accent);padding-left:12px;margin-top:4px}
+  .phase .out b{color:var(--ink)}
+
+  /* ---- segments ---- */
+  .segs{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px}
+  .seg{background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:17px;box-shadow:var(--shadow)}
+  .seg .h{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+  .seg .h b{font-size:14px;letter-spacing:-.01em}
+  .seg .n{font-family:var(--font-mono);font-weight:700;font-size:22px;color:var(--accent-ink);line-height:1}
+  .seg .players{margin-top:11px;font-size:12px;color:var(--ink-2);line-height:1.5}
+  .seg .players span{color:var(--muted)}
+
+  /* ---- metrics + personas ---- */
+  .grid2{display:grid;grid-template-columns:1.15fr .85fr;gap:30px;align-items:start}
+  .mtable{width:100%;border-collapse:collapse;font-size:13.5px}
+  .mtable td{padding:11px 4px;border-bottom:1px solid var(--border);vertical-align:top}
+  .mtable td.tgt{font-family:var(--font-mono);font-weight:600;color:var(--accent-ink);text-align:right;white-space:nowrap;padding-left:16px}
+  .personas{display:grid;gap:10px}
+  .persona{background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:13px 15px}
+  .persona b{font-size:13.5px} .persona span{display:block;font-size:12px;color:var(--muted);margin-top:2px}
+
+  /* ---- callout ---- */
+  .callout{background:var(--crit-soft);border:1px solid color-mix(in srgb,var(--crit) 35%,var(--border));
+    border-radius:14px;padding:18px 20px;font-size:14px;color:var(--ink);margin-top:22px}
+  .callout b{color:var(--crit)}
+
+  /* ---- footer ---- */
+  footer{border-top:1px solid var(--border);padding:30px 0 50px;color:var(--muted);font-size:12.5px}
+  footer .fr{display:flex;flex-wrap:wrap;gap:14px;justify-content:space-between;align-items:center}
+
+  /* ---- tooltip ---- */
+  #tip{position:fixed;z-index:100;max-width:320px;background:var(--bg-2);border:1px solid var(--border-2);
+    border-radius:11px;padding:12px 13px;box-shadow:var(--shadow);pointer-events:none;opacity:0;transform:translateY(4px);
+    transition:opacity .12s;font-size:12.5px}
+  #tip.on{opacity:1;transform:translateY(0)}
+  #tip .tn{font-weight:700;font-size:13px;margin-bottom:5px;color:var(--ink)}
+  #tip .trow{display:flex;gap:8px;margin-top:5px;color:var(--ink-2)}
+  #tip .tk{font-family:var(--font-mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);min-width:52px}
+  #tip .tw{color:var(--ink-2)}
+
+  @media (max-width:820px){
+    .kpis{grid-template-columns:repeat(2,1fr)}
+    .grid2{grid-template-columns:1fr}
+    .cliff .bar-row{grid-template-columns:1fr;gap:6px}
+    .cliff .val{text-align:left}
+  }
+  @media (max-width:520px){
+    .kpis{grid-template-columns:1fr}
+    .phase{grid-template-columns:1fr;gap:12px}
+    .cell{max-width:none}
+  }
+  .reveal{opacity:0;transform:translateY(10px)}
+  .reveal.in{opacity:1;transform:none;transition:opacity .5s ease,transform .5s cubic-bezier(.2,.7,.2,1)}
+  @media (prefers-reduced-motion:reduce){.reveal{opacity:1;transform:none}.reveal.in{transition:none}}
+</style>
+
+<div class="topbar">
+  <div class="wrap row">
+    <div class="brand"><span class="dot"></span>DataTalker <small>/ STRATEGY</small></div>
+    <button class="toggle" id="themeBtn" aria-label="Toggle color theme"><span id="themeIcon">◐</span> <span id="themeLbl">Theme</span></button>
+  </div>
+</div>
+
+<main class="wrap">
+  <!-- HERO -->
+  <section class="hero" style="padding-top:52px">
+    <div class="kicker">
+      <span class="pill accent">PRODUCT REQUIREMENTS · 2026</span>
+      <span class="pill">Grounded in a 92-product market audit</span>
+      <span class="pill">Wedge: vendor-neutral · BYO-everything</span>
+    </div>
+    <h1 class="title">The <em>other 66</em> features between a demo and a product.</h1>
+    <p class="lede" id="lede"></p>
+    <div class="query" aria-hidden="true">
+      <span class="kw">SELECT</span> capability <span class="kw">FROM</span> market
+      <span class="kw">WHERE</span> datatalker.status = <span class="cm">'missing'</span>;
+      <span class="cm">&nbsp;— 60 rows</span>
+    </div>
+    <div class="kpis" id="kpis"></div>
+  </section>
+
+  <hr class="rule">
+
+  <!-- ACCURACY CLIFF -->
+  <section class="reveal">
+    <div class="sec-head">
+      <span class="eyebrow">The thesis</span>
+      <h2>The accuracy cliff — why the semantic layer is the moat, not a feature</h2>
+      <p>Raw schema-only text-to-SQL (exactly what DataTalker does today) looks great on academic benchmarks and collapses on real enterprise schemas. A governed semantic layer is the single lever that recovers it.</p>
+    </div>
+    <div class="cliff" id="cliff"></div>
+  </section>
+
+  <!-- WEDGE -->
+  <section class="reveal">
+    <div class="sec-head">
+      <span class="eyebrow">Positioning</span>
+      <h2>How DataTalker wins</h2>
+      <p id="posText"></p>
+    </div>
+    <div class="wedge">
+      <h3>The vendor-neutral wedge</h3>
+      <div class="chips">
+        <span class="chip"><b>BYO</b> LLM</span><span class="chip"><b>BYO</b> warehouse</span>
+        <span class="chip"><b>MCP</b>-native</span><span class="chip"><b>Open</b>-core</span>
+        <span class="chip">Self-host · VPC · air-gapped</span><span class="chip">White-label embed SDK</span>
+      </div>
+      <ul id="diffs"></ul>
+    </div>
+  </section>
+
+  <!-- GAP BOARD -->
+  <section class="reveal">
+    <div class="sec-head">
+      <span class="eyebrow">Capability board · 74 features</span>
+      <h2>Where DataTalker stands vs the market</h2>
+      <p>Every feature the market considers relevant, grouped by capability area and colored by DataTalker's current status. Filter by tier; hover any card for detail and who ships it.</p>
+    </div>
+    <div class="board-tools">
+      <div class="legend">
+        <span class="lg"><span class="sw good"></span>✓ Shipped</span>
+        <span class="lg"><span class="sw warn"></span>◐ Partial</span>
+        <span class="lg"><span class="sw crit"></span>✗ Missing</span>
+      </div>
+      <div class="filters" id="filters" role="group" aria-label="Filter by tier">
+        <button class="fbtn" data-t="all" aria-pressed="true">All</button>
+        <button class="fbtn" data-t="table-stakes" aria-pressed="false">Table-stakes</button>
+        <button class="fbtn" data-t="competitive-parity" aria-pressed="false">Parity</button>
+        <button class="fbtn" data-t="differentiator" aria-pressed="false">Differentiator</button>
+        <button class="fbtn" data-t="future-bet" aria-pressed="false">Future-bet</button>
+      </div>
+    </div>
+    <div class="board" id="board"></div>
+  </section>
+
+  <!-- ROADMAP -->
+  <section class="reveal">
+    <div class="sec-head">
+      <span class="eyebrow">Roadmap · prototype → product</span>
+      <h2>Six phases, sequenced by dependency</h2>
+      <p>Governance before accuracy before agentic. Each phase is independently shippable; the order is not negotiable — you fail the enterprise security review before accuracy is ever discussed.</p>
+    </div>
+    <div class="road" id="road"></div>
+  </section>
+
+  <!-- SEGMENTS -->
+  <section class="reveal">
+    <div class="sec-head">
+      <span class="eyebrow">Competitive landscape · 92 products</span>
+      <h2>The field we benchmarked against</h2>
+      <p>Eight segments, from warehouse-native giants to open-source frameworks and future-trend bets.</p>
+    </div>
+    <div class="segs" id="segs"></div>
+    <div class="callout">⚠ <b>The opening:</b> the credible independent challengers — Waii, Seek AI, Outerbase — were all <b>acquired in 2025</b> (Salesforce, IBM, Cloudflare). The incumbents each lock you to one warehouse. That leaves the self-hostable, BYO-LLM, MCP-native middle unclaimed.</div>
+  </section>
+
+  <!-- METRICS + PERSONAS -->
+  <section class="reveal">
+    <div class="grid2">
+      <div>
+        <div class="sec-head"><span class="eyebrow">Success metrics</span><h2>What "winning" is measured by</h2></div>
+        <table class="mtable"><tbody id="metrics"></tbody></table>
+      </div>
+      <div>
+        <div class="sec-head"><span class="eyebrow">Who it's for</span><h2>Personas</h2></div>
+        <div class="personas" id="personas"></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap fr">
+    <div>Synthesized by 9 Sonnet 5 research agents · 2026-07-04 · companion to <span class="mono">CODEBASE_AUDIT.md</span> &amp; <span class="mono">PRD.md</span></div>
+    <div class="mono">DataTalker · 8 / 74 shipped</div>
+  </div>
+</footer>
+
+<div id="tip" role="tooltip"></div>
+
+<script>
+const DATA = {
+"vision": "DataTalker becomes the semantic-layer-first, BYO-everything conversational data platform that any enterprise, or any ISV building on top of one, can point at their own warehouse, own LLM, and own deployment boundary - and trust the answer, not just admire the demo.",
+"positioning": "DataTalker enters a market that has already converged on a clear architectural consensus - governed semantic layer, execution-guided self-correction, show-the-SQL trust, and inherited RBAC/RLS - but that consensus is currently locked inside either single-warehouse platforms (Snowflake Cortex Analyst, Databricks Genie, BigQuery/Looker, QuickSight) that demand a hyperscaler bet, or BI-suite copilots (ThoughtSpot, Qlik, Power BI, Tableau, Sigma) priced and packaged around an existing seat-based platform. Independent challengers that once occupied the flexible middle (Waii, Seek AI, Outerbase) were acquired by Salesforce, IBM, and Cloudflare within months of each other in 2025, leaving a real g…",
+"targetMarket": "Mid-market to large enterprises (500-10,000+ employees) with heterogeneous or multi-cloud data estates (a mix of Postgres/MySQL OLTP, one or more cloud warehouses, and legacy on-prem systems) who cannot or will not standardize on a single hyperscaler's semantic/AI stack, plus regulated industries (finance, healthcare, insurance) requiring on-prem/VPC/air-gapped deployment and BYO-LLM data-residen…",
+"nprod": 92,
+"nfeat": 74,
+"ncat": 12,
+"tierTotals": {
+"table-stakes": 30,
+"competitive-parity": 16,
+"differentiator": 18,
+"future-bet": 10
+},
+"statTotals": {
+"present": 8,
+"partial": 6,
+"missing": 60
+},
+"categories": [
+{
+"cat": "NL Understanding & SQL Generation",
+"present": 1,
+"partial": 2,
+"missing": 4,
+"features": [
+{
+"n": "Zero-shot LLM SQL generation from reflected schema",
+"d": "Reflect live DB schema and prompt an LLM to write SQL directly against it.",
+"t": "table-stakes",
+"s": "present",
+"w": "Universal across every product surveyed"
+},
+{
+"n": "Stateful multi-turn conversation",
+"d": "Resolve follow-up questions ('now by region') against prior turns' tables/filters/context, not just suggest follow-up prompts.",
+"t": "table-stakes",
+"s": "partial",
+"w": "Databricks Genie (improved context handling), ThoughtSpot, Delphina"
+},
+{
+"n": "Multi-statement / multi-part question handling",
+"d": "Correctly decompose and render results for a single NL ask that implies multiple SQL statements.",
+"t": "competitive-parity",
+"s": "partial",
+"w": "MAC-SQL, DIN-SQL decomposition patterns; Genie multi-step"
+},
+{
+"n": "Schema linking / pruning for large schemas",
+"d": "Retrieve only the top-K relevant tables/columns instead of stuffing the whole information_schema into the prompt.",
+"t": "competitive-parity",
+"s": "missing",
+"w": "LlamaIndex SQLTableRetrieverQueryEngine, CHESS, X-Linking, RASL"
+},
+{
+"n": "Query decomposition into sub-questions/CTEs",
+"d": "Break a complex analytical question into simpler composable sub-queries before assembling final SQL.",
+"t": "differentiator",
+"s": "missing",
+"w": "MAC-SQL Decomposer, DIN-SQL, QDecomp"
+},
+{
+"n": "Pluggable LLM providers (BYO-LLM)",
+"d": "Swap between OpenAI, Anthropic, Gemini, Bedrock, Azure OpenAI, or local models (Ollama/vLLM) per tenant, not hardwired to one vendor.",
+"t": "table-stakes",
+"s": "missing",
+"w": "ThoughtSpot, Sisense, Vanna, WrenAI, DB-GPT - now standard across nearly every serious product"
+},
+{
+"n": "On-prem fine-tuned SQL-specialist model option",
+"d": "Offer a small, purpose-built SQL model (SQLCoder/NSQL-class) for fully offline/air-gapped inference as an alternative to any external API call.",
+"t": "future-bet",
+"s": "missing",
+"w": "Numbers Station (NSQL), Defog SQLCoder, Chat2DB-SQL-7B"
+}
+]
+},
+{
+"cat": "Semantic / Metrics Layer",
+"present": 0,
+"partial": 0,
+"missing": 5,
+"features": [
+{
+"n": "LLM-writable semantic/metrics model",
+"d": "A human- and LLM-editable model (tables->'models', dimensions, metrics, joins, synonyms) that narrows the LLM's task from 'write SQL' to 'select the…",
+"t": "differentiator",
+"s": "missing",
+"w": "dbt MetricFlow, Cube, WrenAI MDL, Snowflake Semantic Views, Databricks Metric Views, LookML"
+},
+{
+"n": "Verified Query Repository",
+"d": "Curated bank of human-approved NL-question->SQL pairs matched directly for known questions and mined to expand semantic-model coverage over time.",
+"t": "differentiator",
+"s": "missing",
+"w": "Snowflake Cortex Analyst VQR, ThoughtSpot verified answers/search tokens"
+},
+{
+"n": "Auto-modeling / one-click semantic model generation",
+"d": "Scan a connected schema (including low-cardinality columns and historical query logs) to auto-propose a first-draft semantic model, cutting the class…",
+"t": "differentiator",
+"s": "missing",
+"w": "AtScale One-Click Modeling, Databricks database-scan seeding, Dataherald context-store seeding"
+},
+{
+"n": "Open/portable metric spec",
+"d": "Define metrics in a vendor-neutral format so customers aren't locked into DataTalker's own semantic dialect, aligned with the Open Semantic Interchan…",
+"t": "future-bet",
+"s": "missing",
+"w": "dbt Labs, Cube, Snowflake, Salesforce (OSI initiative)"
+},
+{
+"n": "Business glossary / synonym mapping",
+"d": "Map business terminology and synonyms ('JD' = 'Jane Doe', 'revenue' = specific column expression) onto physical schema elements.",
+"t": "table-stakes",
+"s": "missing",
+"w": "Nearly every semantic-layer vendor"
+}
+]
+},
+{
+"cat": "Accuracy, Self-Correction & Evaluation",
+"present": 1,
+"partial": 1,
+"missing": 5,
+"features": [
+{
+"n": "Execution-guided retry on error/empty result",
+"d": "Run generated SQL, catch DB errors or unexpectedly empty results, feed the error back to the LLM for a bounded repair loop.",
+"t": "table-stakes",
+"s": "present",
+"w": "Uber QueryGPT, Swiggy Hermes, LinkedIn SQL Bot, WrenAI, Waii, PandasAI"
+},
+{
+"n": "Typed error classification in repair loop",
+"d": "Distinguish syntax errors, permission errors, and semantic mismatches to route to the correct correction strategy rather than a single generic retry.",
+"t": "competitive-parity",
+"s": "partial",
+"w": "CHESS unit-tester agent, ReFoRCE"
+},
+{
+"n": "Column-value / entity grounding",
+"d": "Fuzzy-match literal values mentioned in the question (names, statuses, typos) against actual distinct DB values via LSH/edit-distance/embedding simil…",
+"t": "competitive-parity",
+"s": "missing",
+"w": "CHESS, Amazon RASL"
+},
+{
+"n": "Dynamic few-shot example retrieval",
+"d": "Pull the most semantically similar verified question->SQL pairs at query time as in-context examples rather than static prompt examples.",
+"t": "competitive-parity",
+"s": "missing",
+"w": "Dubo-SQL, most semantic-layer vendors"
+},
+{
+"n": "LLM-as-judge semantic-equivalence scoring",
+"d": "A second LLM/model call scores whether generated SQL actually matches question intent before returning results, catching valid-but-wrong-intent queri…",
+"t": "differentiator",
+"s": "missing",
+"w": "Snowflake Cortex Analyst semantic-alignment layer"
+},
+{
+"n": "Continuous eval harness (internal benchmark + regression)",
+"d": "Customer-specific golden-query test sets plus BIRD/Spider-2.0-style internal benchmarks run pre-release and continuously in production.",
+"t": "differentiator",
+"s": "missing",
+"w": "Databricks Genie Benchmarks, Snowflake's internal 150-question benchmark"
+},
+{
+"n": "Per-answer confidence scoring",
+"d": "Surface a confidence signal (verified-match vs fresh generation, judge score) alongside every answer.",
+"t": "differentiator",
+"s": "missing",
+"w": "Snowflake Cortex Analyst confidence object"
+}
+]
+},
+{
+"cat": "Trust, Verification & Explainability",
+"present": 1,
+"partial": 0,
+"missing": 5,
+"features": [
+{
+"n": "Show-the-SQL",
+"d": "Always expose the exact SQL executed alongside the NL answer for inspection.",
+"t": "table-stakes",
+"s": "present",
+"w": "Universal among credible vendors"
+},
+{
+"n": "Verified-query / confidence badge in UI",
+"d": "Visually flag whether an answer came from a pre-approved verified query versus freshly generated SQL.",
+"t": "differentiator",
+"s": "missing",
+"w": "Snowflake Cortex Analyst, ThoughtSpot Spotter"
+},
+{
+"n": "Principled abstention ('insufficient grounding/permission')",
+"d": "Return no answer rather than a fabricated or permission-violating one when confidence or authorization is insufficient.",
+"t": "table-stakes",
+"s": "missing",
+"w": "Databricks Genie, Snowflake Cortex Analyst"
+},
+{
+"n": "Full audit trail",
+"d": "Log every NL question, generated SQL, executing user/role, and rows touched for compliance review.",
+"t": "table-stakes",
+"s": "missing",
+"w": "Universal enterprise requirement per research"
+},
+{
+"n": "Reasoning/lineage explainability",
+"d": "Explain which semantic terms, tables, and joins were resolved to answer the question, not just the final SQL string.",
+"t": "competitive-parity",
+"s": "missing",
+"w": "ThoughtSpot search-token audit trail, Amazon Q assumptions/filters trace"
+},
+{
+"n": "Human-in-the-loop approval for low-confidence queries",
+"d": "Route low-confidence or first-time query patterns to a review/approval step before returning or acting.",
+"t": "future-bet",
+"s": "missing",
+"w": "Emerging pattern across guardrail literature"
+}
+]
+},
+{
+"cat": "Visualization & Output Modalities",
+"present": 2,
+"partial": 0,
+"missing": 5,
+"features": [
+{
+"n": "Auto-generated charts from results",
+"d": "Turn query results directly into an appropriate chart type, not just a table.",
+"t": "table-stakes",
+"s": "missing",
+"w": "Universal across BI copilots, startups, and warehouse-native tools"
+},
+{
+"n": "NL narrative summary of results",
+"d": "Plain-language explanation of what the data shows alongside the raw answer.",
+"t": "table-stakes",
+"s": "present",
+"w": "Universal"
+},
+{
+"n": "Follow-up question suggestions",
+"d": "Suggest relevant next questions after each answer.",
+"t": "competitive-parity",
+"s": "present",
+"w": "Most BI copilots and startups"
+},
+{
+"n": "Streaming responses",
+"d": "Stream SQL generation and answer tokens incrementally rather than waiting for full completion.",
+"t": "table-stakes",
+"s": "missing",
+"w": "Vanna 2.0, most modern chat-with-data tools"
+},
+{
+"n": "Save/pin chart to a dashboard",
+"d": "Persist a generated chart into a lightweight dashboard for reuse.",
+"t": "competitive-parity",
+"s": "missing",
+"w": "Genie, Basedash, Sigma"
+},
+{
+"n": "Export (CSV/Excel/PDF)",
+"d": "Export query results and charts in common formats.",
+"t": "table-stakes",
+"s": "missing",
+"w": "Universal"
+},
+{
+"n": "Proactive narrative digest delivery",
+"d": "Push scheduled/triggered narrative summaries to Slack/Teams/email rather than requiring users to visit the app.",
+"t": "differentiator",
+"s": "missing",
+"w": "Tableau Pulse, Domo, Datarails Insights"
+}
+]
+},
+{
+"cat": "Connectors & Data Sources",
+"present": 2,
+"partial": 1,
+"missing": 4,
+"features": [
+{
+"n": "SQLite & Postgres support",
+"d": "Existing dialect coverage.",
+"t": "table-stakes",
+"s": "present",
+"w": "Baseline for all"
+},
+{
+"n": "MySQL / SQL Server / Oracle dialects",
+"d": "Expand SQLAlchemy dialect coverage to the most common enterprise OLTP engines.",
+"t": "table-stakes",
+"s": "missing",
+"w": "Chat2DB, LangChain SQLDatabaseToolkit, Vanna"
+},
+{
+"n": "Cloud warehouse connectors",
+"d": "Snowflake, BigQuery, Redshift, Databricks connectivity.",
+"t": "competitive-parity",
+"s": "missing",
+"w": "Every warehouse-native vendor plus Wren AI, Dataherald, Waii"
+},
+{
+"n": "Flexible DB-input methods (upload/path/URL/connection-string)",
+"d": "Four ways to point DataTalker at a database, unusually flexible versus tools that assume you're already on their warehouse.",
+"t": "differentiator",
+"s": "present",
+"w": "AskYourDatabase (partial), most warehouse-native tools lack this entirely"
+},
+{
+"n": "Existing semantic-layer ingestion (dbt/Cube/LookML import)",
+"d": "Import an existing governed metrics layer instead of forcing customers to re-author one from scratch.",
+"t": "differentiator",
+"s": "missing",
+"w": "AtScale integrates with Genie/Cortex; largely unaddressed by independents"
+},
+{
+"n": "First-class file/spreadsheet ingestion (CSV/Excel)",
+"d": "Treat uploaded spreadsheets as a first-class, queryable source, not just DB files.",
+"t": "table-stakes",
+"s": "partial",
+"w": "Julius AI, Rows AI, PandasAI"
+},
+{
+"n": "Cross-source federation",
+"d": "Answer a single NL question by joining across more than one connected source.",
+"t": "future-bet",
+"s": "missing",
+"w": "Databricks Lakehouse Federation, Looker cross-warehouse"
+}
+]
+},
+{
+"cat": "Security & Governance",
+"present": 0,
+"partial": 1,
+"missing": 7,
+"features": [
+{
+"n": "SSO/SAML/OIDC authentication",
+"d": "Enterprise login integration; no bespoke credential store.",
+"t": "table-stakes",
+"s": "missing",
+"w": "Universal enterprise requirement"
+},
+{
+"n": "Role-based access control (RBAC)",
+"d": "Control which users/roles can query which connections/semantic models.",
+"t": "table-stakes",
+"s": "missing",
+"w": "Universal"
+},
+{
+"n": "Row-level security & column masking",
+"d": "Enforce at query time, ideally inherited from the source DB's native roles plus an additional DataTalker-native ABAC layer for sources without native…",
+"t": "table-stakes",
+"s": "missing",
+"w": "Snowflake RBAC/RAP, Unity Catalog ABAC, QuickSight RLS, WrenAI RLAC/CLAC"
+},
+{
+"n": "Read-only sandboxed execution",
+"d": "Enforce execution via a genuinely read-only DB role/sandbox, not a keyword blocklist alone (current validator is bypassable).",
+"t": "table-stakes",
+"s": "partial",
+"w": "LangChain recommended pattern, Delphina Firecracker microVMs"
+},
+{
+"n": "PII auto-classification & masking",
+"d": "Automatically detect and mask sensitive fields (emails, SSNs) before they reach the LLM or the user.",
+"t": "competitive-parity",
+"s": "missing",
+"w": "Snowflake SYSTEM$CLASSIFY, Immuta/Privacera-style platforms"
+},
+{
+"n": "Audit logging",
+"d": "Immutable log of every question, SQL, and data access event.",
+"t": "table-stakes",
+"s": "missing",
+"w": "Universal enterprise requirement"
+},
+{
+"n": "Compliance certifications (SOC2, ISO27001, HIPAA, ISO 42001)",
+"d": "Formal attestations required for enterprise procurement.",
+"t": "table-stakes",
+"s": "missing",
+"w": "Qlik Answers ISO 42001, most enterprise BI vendors SOC2"
+},
+{
+"n": "Attribute-based access control (ABAC)",
+"d": "Tag-driven policies applying automatically across catalogs/schemas at scale.",
+"t": "differentiator",
+"s": "missing",
+"w": "Databricks Unity Catalog ABAC"
+}
+]
+},
+{
+"cat": "Multi-Tenancy & Deployment",
+"present": 0,
+"partial": 0,
+"missing": 6,
+"features": [
+{
+"n": "Multi-tenant workspace isolation",
+"d": "Logical separation of connections, semantic models, and conversation history per tenant/org.",
+"t": "table-stakes",
+"s": "missing",
+"w": "Universal for any multi-customer deployment"
+},
+{
+"n": "Config surface (per-tenant settings, prompts, model choice)",
+"d": "Admin-configurable settings instead of hardcoded values across the codebase.",
+"t": "table-stakes",
+"s": "missing",
+"w": "Universal"
+},
+{
+"n": "Async request handling & connection pooling",
+"d": "Non-blocking I/O and pooled DB connections to serve concurrent users.",
+"t": "table-stakes",
+"s": "missing",
+"w": "Universal for production BI"
+},
+{
+"n": "Working containerized deployment (Docker/Helm)",
+"d": "A reproducible, documented deploy path; current scripts are incomplete/removed.",
+"t": "table-stakes",
+"s": "missing",
+"w": "Universal"
+},
+{
+"n": "On-prem / VPC / air-gapped deployment option",
+"d": "Deploy fully inside a customer's own compliance boundary with no external calls when combined with local LLM support.",
+"t": "differentiator",
+"s": "missing",
+"w": "Seek AI (Snowflake Native App), Numbers Station NSQL, Google Conversational Analytics regional endpoints"
+},
+{
+"n": "BYO-LLM provider selection per tenant",
+"d": "Let each tenant choose/restrict which LLM provider processes their prompts.",
+"t": "table-stakes",
+"s": "missing",
+"w": "ThoughtSpot, Sisense, GoodData ('no vendor lock-in')"
+}
+]
+},
+{
+"cat": "Observability & Cost Governance",
+"present": 0,
+"partial": 0,
+"missing": 6,
+"features": [
+{
+"n": "Structured pipeline logging/tracing",
+"d": "Trace each stage (schema fetch, generation, validation, execution, formatting) for debugging and audit.",
+"t": "table-stakes",
+"s": "missing",
+"w": "Universal for production systems"
+},
+{
+"n": "Usage analytics dashboard",
+"d": "Queries, cost, and latency broken down per team/tenant/model.",
+"t": "competitive-parity",
+"s": "missing",
+"w": "AI-gateway category, Kyligence, ThoughtSpot credit dashboards"
+},
+{
+"n": "Token-based rate limiting & budget caps",
+"d": "Hierarchical spend caps at org/team/key level with hard stops.",
+"t": "competitive-parity",
+"s": "missing",
+"w": "Snowflake model-level RBAC, AI gateways (Kong AI Gateway class)"
+},
+{
+"n": "Semantic caching",
+"d": "Match functionally-equivalent questions (not just exact hashes) to cut redundant LLM calls; schema caching exists today but not query-level caching.",
+"t": "differentiator",
+"s": "missing",
+"w": "Cube semantic layer caching, AI gateway category"
+},
+{
+"n": "Model-tier routing",
+"d": "Route simple lookups to cheaper/faster models and reserve premium models for complex reasoning.",
+"t": "differentiator",
+"s": "missing",
+"w": "Emerging pattern across cost-governance literature"
+},
+{
+"n": "Per-model RBAC",
+"d": "Gate which roles can invoke which LLMs, doubling as a cost and data-exposure control.",
+"t": "future-bet",
+"s": "missing",
+"w": "Snowflake Cortex model-level RBAC"
+}
+]
+},
+{
+"cat": "Collaboration, Distribution & Embedding",
+"present": 1,
+"partial": 0,
+"missing": 5,
+"features": [
+{
+"n": "Web chat UI",
+"d": "Existing React/Vite frontend for direct interaction.",
+"t": "table-stakes",
+"s": "present",
+"w": "Universal"
+},
+{
+"n": "Slack/Teams delivery",
+"d": "Deliver answers and proactive alerts inside chat tools people already use.",
+"t": "competitive-parity",
+"s": "missing",
+"w": "Tableau Pulse, Julius Slack Agent, Domo, Qlik"
+},
+{
+"n": "Embeddable/white-label SDK for ISVs",
+"d": "API/SDK to embed conversational analytics inside a third party's own product under their brand, with per-tenant isolation.",
+"t": "differentiator",
+"s": "missing",
+"w": "GoodData AI Assistant, Sisense Compose SDK, ThoughtSpot Everywhere, Domo Everywhere"
+},
+{
+"n": "MCP server exposing semantic layer & query engine",
+"d": "Expose the governed semantic model and query execution as MCP tools/resources so any agent host (Claude, Copilot, Cursor) can query it - infrastructu…",
+"t": "differentiator",
+"s": "missing",
+"w": "Looker Managed MCP, dbt MCP server, AtScale MCP, Oracle Analytics MCP Server, WrenAI agent-first design"
+},
+{
+"n": "Scheduled/recurring queries and reports",
+"d": "Run a saved question on a cadence and deliver the result automatically.",
+"t": "competitive-parity",
+"s": "missing",
+"w": "Delphina Workflows, Datarails Insights"
+},
+{
+"n": "Shareable saved queries/links",
+"d": "Persist and share a specific question+answer with teammates.",
+"t": "table-stakes",
+"s": "missing",
+"w": "Universal"
+}
+]
+},
+{
+"cat": "Admin & Customization",
+"present": 0,
+"partial": 1,
+"missing": 4,
+"features": [
+{
+"n": "Admin console (connectors/users/roles)",
+"d": "Central place to manage data sources, users, and role assignments.",
+"t": "table-stakes",
+"s": "missing",
+"w": "Universal"
+},
+{
+"n": "Custom prompt/instruction injection per tenant",
+"d": "Let admins steer SQL generation style, tone, and disambiguation rules per deployment (akin to Snowflake semantic-view custom instructions).",
+"t": "competitive-parity",
+"s": "missing",
+"w": "Snowflake custom instructions, MicroStrategy Auto tone/detail customization"
+},
+{
+"n": "Pluggable validator/guardrail rules",
+"d": "Configurable, layered guardrails (deterministic rules escalating to LLM-judge checks) beyond a static keyword blocklist.",
+"t": "competitive-parity",
+"s": "partial",
+"w": "Layered guardrail pattern documented across semantic-layer/accuracy research"
+},
+{
+"n": "Custom branding/white-label theming",
+"d": "Rebrand the UI/embed for ISV customers.",
+"t": "differentiator",
+"s": "missing",
+"w": "GoodData, MicroStrategy Auto, Domo Everywhere"
+},
+{
+"n": "Feature flagging / gradual rollout controls",
+"d": "Roll out new agent behaviors or model versions to a subset of tenants first.",
+"t": "future-bet",
+"s": "missing",
+"w": "Not commonly documented as a standalone feature in this market yet"
+}
+]
+},
+{
+"cat": "Agentic / Proactive Intelligence",
+"present": 0,
+"partial": 0,
+"missing": 4,
+"features": [
+{
+"n": "Proactive anomaly detection & root-cause narration",
+"d": "Continuously monitor data and surface unprompted anomalies with driver-level explanation, pushed to Slack/email.",
+"t": "future-bet",
+"s": "missing",
+"w": "ThoughtSpot SpotIQ, Tableau Pulse, Kyligence root-cause analysis, Guandata BI Copilot"
+},
+{
+"n": "Multi-step autonomous data investigation",
+"d": "Plan -> query -> re-plan -> synthesize a full investigative report from a single open-ended prompt, not a single-turn NL-to-chart.",
+"t": "future-bet",
+"s": "missing",
+"w": "Explicitly flagged as underexplored even by incumbents (DataSTORM/DABStep-Research)"
+},
+{
+"n": "Scheduled monitoring agents",
+"d": "Background agents that watch metrics against thresholds and alert on breach.",
+"t": "future-bet",
+"s": "missing",
+"w": "Delphina Proactive Agents, Basedash Autopilot, Zenlytic Zoë"
+},
+{
+"n": "Agentic write-back / action-taking",
+"d": "Trigger downstream actions (webhooks, CRM updates) from a conversational agent rather than only reading data.",
+"t": "future-bet",
+"s": "missing",
+"w": "Sigma Agents, Mosaic PE Autopilot"
+}
+]
+}
+],
+"roadmap": [
+{
+"phase": "Phase 0 (current)",
+"theme": "Working prototype",
+"features": [
+"Schema reflection + caching",
+"Gemini-only SQL generation",
+"Keyword-blocklist validator",
+"Retry-on-empty",
+"4 DB-input methods",
+"Follow-up question suggestions",
+"Multi-statement execution (buggy)"
+],
+"outcome": "Demonstrable single-user prototype; not deployable to any real customer due to zero security, no config surface, and hardwired LLM/dialect."
+},
+{
+"phase": "Phase 1: Enterprise-Safe Foundation",
+"theme": "Make it legally and operationally deployable",
+"features": [
+"SSO/SAML/OIDC authentication",
+"RBAC and per-tenant config surface",
+"Audit logging",
+"Read-only sandboxed execution (replace keyword blocklist)",
+"Async request handling + connection pooling",
+"Working containerized deploy (Docker/Helm)",
+"Structured pipeline logging/observability",
+"Fix multi-statement rendering bug"
+],
+"outcome": "Passes a baseline enterprise security review and can be piloted with real concurrent users; no accuracy or semantic-layer work yet."
+},
+{
+"phase": "Phase 2: Semantic Layer & Accuracy Core",
+"theme": "Close the enterprise-accuracy-cliff gap",
+"features": [
+"LLM-writable semantic/metrics model + auto-modeling",
+"Verified Query Repository",
+"Schema linking/pruning + column-value grounding",
+"Dynamic few-shot retrieval",
+"Pluggable LLM providers (BYO-LLM)",
+"Dialect expansion: MySQL, SQL Server, Snowflake, BigQuery, Databricks",
+"Formalized typed repair loop"
+],
+"outcome": "Accuracy on modeled questions reaches the 90%+ range; product works across the customer's actual multi-warehouse/multi-dialect estate."
+},
+{
+"phase": "Phase 3: Trust & Output Parity",
+"theme": "Meet the enterprise trust and visualization bar",
+"features": [
+"Auto-generated charts",
+"Streaming responses",
+"Verified-query confidence badge in UI",
+"Principled abstention behavior",
+"LLM-as-judge semantic-equivalence gate",
+"Continuous eval harness (golden queries + internal benchmark)",
+"Row-level security / column masking (own + inherited)",
+"PII auto-classification",
+"Compliance certification program (SOC2, ISO27001)"
+],
+"outcome": "Output modality parity with BI copilots; passes deeper security/compliance diligence; trustworthy enough for broad self-service rollout."
+},
+{
+"phase": "Phase 4: Scale & Interoperability",
+"theme": "Become infrastructure, not just an app",
+"features": [
+"Multi-tenant workspace isolation",
+"MCP server exposing semantic layer + query engine",
+"On-prem/VPC/air-gapped deployment option",
+"Token budgets, semantic caching, model-tier routing",
+"Usage analytics/cost dashboards",
+"Slack/Teams delivery",
+"Embeddable/white-label SDK for ISVs",
+"Admin console"
+],
+"outcome": "Deployable at scale across tenants and channels; opens the ISV/embedded-analytics revenue line and agent-ecosystem interoperability."
+},
+{
+"phase": "Phase 5: Agentic & Proactive",
+"theme": "Differentiate on the market's least-commoditized frontier",
+"features": [
+"Proactive anomaly detection & root-cause narration",
+"Scheduled monitoring agents with Slack/email push",
+"Multi-step autonomous data investigation ('deep research' over structured data)",
+"Approval-gated agentic write-back (behind explicit customer opt-in)",
+"On-prem fine-tuned SQL-specialist model option"
+],
+"outcome": "Moves beyond reactive Q&A into proactive, trusted agentic analytics - the whitespace research shows even incumbents haven't fully claimed."
+}
+],
+"metrics": [
+{
+"m": "Execution accuracy on semantic-layer-backed questions (internal benchmark)",
+"t": ">=90% within 12 months, approaching the 98-100% ceiling published for governed semantic-layer routing"
+},
+{
+"m": "Execution accuracy on raw/unmodeled schema questions",
+"t": ">=40% within 12 months (vs. current 6-21% enterprise-schema baseline for schema-only text-to-SQL)"
+},
+{
+"m": "Time-to-80%-question-coverage for a new customer schema",
+"t": "<1 business day via auto-modeling, down from weeks of manual semantic-model authoring"
+},
+{
+"m": "Share of answers served from Verified Query Repository",
+"t": ">=30% of production query volume within 6 months of a deployment going live, growing over time"
+},
+{
+"m": "Abstention correctness",
+"t": ">=98% correct refusal on ungrounded/unauthorized queries with <5% false-refusal rate on answerable questions"
+},
+{
+"m": "Enterprise security review time-to-sign-off",
+"t": "<30 days once SSO/RBAC/audit/SOC2 controls ship (vs. currently unable to pass review at all)"
+},
+{
+"m": "Self-service adoption",
+"t": ">=60% weekly-active-to-licensed-seat ratio within 6 months of enterprise rollout"
+},
+{
+"m": "P95 end-to-end query latency",
+"t": "<8 seconds for generation + execution + formatting"
+},
+{
+"m": "Mean LLM cost per simple query",
+"t": "<$0.01/query via semantic caching and model-tier routing, with full per-tenant cost visibility"
+},
+{
+"m": "ISV embed time-to-launch",
+"t": "<4 weeks from SDK access to a live embedded deployment for a design-partner ISV"
+}
+],
+"differentiators": [
+"Semantic-layer-first architecture as the core moat: ship an LLM-writable, auto-modeled metrics/dimensions/joins layer (à la WrenAI MDL / dbt MetricFlow) as day-one infrastructure, not a retrofit - this is the single lever research shows ta…",
+"BYO-everything positioning against hyperscaler lock-in: any LLM (cloud or local/on-prem), any warehouse/DB dialect, any deployment topology (SaaS, VPC, air-gapped) - the explicit wedge for the large segment of enterprises with multi-cloud…",
+"MCP-native from day one: expose the semantic layer and query engine as first-class MCP tools/resources so any agent host (Claude, Copilot, Cursor, ChatGPT) can drive DataTalker - treating it as queryable infrastructure rather than only a p…",
+"Governance-inherited, not reinvented: enforce RBAC/RLS/column-masking by inheriting the source DB's native controls where they exist, layering DataTalker-native ABAC only where the source lacks it - avoiding the credibility gap of generic…",
+"Open-core, self-hostable, developer-embeddable: a genuinely open, inspectable semantic layer and pipeline (not just an API wrapper) that developers can extend, plus a white-label embed SDK - targeting the ISV/embedded-analytics niche (Good…",
+"Verified-query-repository-as-a-feature: let teams lock in known-good NL->SQL pairs for the questions leadership actually asks, mined back into the semantic model over time - a concrete, demonstrable trust mechanism competitive with Snowfla…",
+"Deliberately defer the agentic/proactive/write-back frontier (where even incumbents are immature) as a phase-5 differentiator once trust, accuracy, and governance foundations are proven - avoiding the trap of shipping impressive-looking ag…"
+],
+"personas": [
+{
+"n": "Priya, Business/Ops Analyst",
+"r": "Primary end user asking questions"
+},
+{
+"n": "Marcus, Analytics/Data Engineer",
+"r": "Owns schema, connectors, and semantic model curation"
+},
+{
+"n": "Elena, Security/IT Admin",
+"r": "Gatekeeper for any tool touching production data"
+},
+{
+"n": "Dana, VP Analytics / BI Platform Owner",
+"r": "Economic buyer, owns the semantic model and the vendor relationship"
+},
+{
+"n": "Sam, ISV/Platform Engineer",
+"r": "Embeds conversational analytics into their own customer-facing SaaS product"
+}
+],
+"pillars": [
+{
+"p": "Governed Semantic Core",
+"d": "An LLM-writable, versionable metrics/dimensions/joins model sitting between raw schema and every LLM call, auto-seeded from a schema scan and refined by a Veri…"
+},
+{
+"p": "Pluggable Model & Data Fabric",
+"d": "Adapter layers for LLM providers (cloud and local) and DB dialects (via SQLAlchemy plus warehouse-specific connectors), so no customer is forced onto a single…"
+},
+{
+"p": "Verify-Then-Execute Pipeline",
+"d": "A multi-stage generation pipeline - schema/entity linking, SQL generation, static guardrail checks, sandboxed read-only execution, bounded error-driven repair,…"
+},
+{
+"p": "Inherited Governance & Audit Plane",
+"d": "RBAC/SSO/ABAC enforced at the DataTalker layer and, where available, passed through to the source DB's native RLS/column masking, with every question, generate…"
+},
+{
+"p": "MCP-First Interface Layer",
+"d": "The semantic layer and query engine are exposed as MCP tools/resources as a first-class interface, with the web chat UI and embeddable SDK built as clients of…"
+},
+{
+"p": "Observability & Cost Control Plane",
+"d": "Structured tracing of every pipeline stage, per-tenant usage/cost dashboards, token budgets, semantic caching, and model-tier routing, so LLM spend is a manage…"
+},
+{
+"p": "Multi-Tenant Deployment Fabric",
+"d": "A single codebase deployable as multi-tenant SaaS, dedicated VPC, or fully air-gapped on-prem, with per-tenant configuration (connectors, prompts, model choice…"
+}
+],
+"segments": [
+{
+"seg": "Warehouse-native",
+"count": 4,
+"top": [
+"Cortex Analyst",
+"Genie (AI/BI Genie Spaces)",
+"Looker Conversational Analytics (Gemini in Looker) & Gemini/Conversational Analytics in BigQuery",
+"Amazon Q in QuickSight / QuickSight Q (now under Amazon Quick Suite / Amazon Quick)"
+]
+},
+{
+"seg": "BI-suite copilots",
+"count": 8,
+"top": [
+"ThoughtSpot Spotter (incl. Sage, Spotter Semantics, SpotterModel/Viz/Code)",
+"Microsoft Power BI Copilot (+ Microsoft Fabric / Fabric IQ)",
+"Tableau Agent / Tableau Pulse / Tableau Einstein (formerly Einstein Copilot for Tableau)",
+"Qlik Insight Advisor & Qlik Answers",
+"Sisense Simply Ask & Compose SDK AI Assistant",
+"Domo AI (Domo.AI, AI Chat, Conversational Agents, AI Agent Builder, MCP Server)",
+"MicroStrategy Auto AI (Auto SQL, Auto Dashboard, Auto Answers) / Strategy One",
+"Zoho Analytics - Ask Zia / Zia Insights / Auto Analysis"
+]
+},
+{
+"seg": "Independent / startups",
+"count": 17,
+"top": [
+"Vanna AI",
+"Wren AI",
+"Dataherald",
+"Waii",
+"Seek AI",
+"Zenlytic",
+"Delphina (adjacent/competing 'Delphi' AI data analyst)",
+"DataGPT"
+]
+},
+{
+"seg": "Open-source frameworks",
+"count": 11,
+"top": [
+"Vanna",
+"WrenAI",
+"DB-GPT",
+"Dataherald (OSS engine)",
+"LangChain SQL Agent / LangGraph",
+"LlamaIndex (NLSQLTableQueryEngine / SQLTableRetrieverQueryEngine)",
+"PandasAI",
+"Apache Superset (AI / MCP integration)"
+]
+},
+{
+"seg": "Semantic layer & accuracy",
+"count": 18,
+"top": [
+"dbt Semantic Layer / MetricFlow",
+"Cube",
+"Malloy",
+"LookML (Looker Semantic Layer)",
+"AtScale",
+"Snowflake Cortex Analyst + Verified Query Repository",
+"Databricks AI/BI Genie + Metric Views",
+"Schema Linking"
+]
+},
+{
+"seg": "Enterprise requirements",
+"count": 7,
+"top": [
+"Security & Governance",
+"Deployment & Data Residency",
+"Connectors & Data Integration",
+"Trust & Explainability",
+"Output Modalities & Distribution",
+"Cost & Ops Governance",
+"Pricing & Packaging Models"
+]
+},
+{
+"seg": "Gap-fill",
+"count": 17,
+"top": [
+"Microsoft Copilot in Excel (incl. COPILOT function & Agent Mode)",
+"Gemini in Google Sheets",
+"Rows AI",
+"Coefficient (AI Sheets Assistant / Coefficient GPT)",
+"Datarails Genius (Insights / Storyboards / Chat)",
+"Mosaic (Strategic Finance Platform \"Arc AI\" and separately Mosaic PE deal-modeling \"Autopilot\")",
+"Sigma Computing AI (Sigma Assistant, AI Query, Sigma Agents, Sigma Tenants)",
+"Metabase AI (Metabot)"
+]
+},
+{
+"seg": "Future trends",
+"count": 10,
+"top": [
+"Agentic BI / Autonomous Data Agents",
+"Model Context Protocol (MCP) & Standardized Tool-Use for Data",
+"Semantic-Layer-as-Ground-Truth (NL-to-Metrics, not NL-to-raw-SQL)",
+"Verified-Query / Trust Layer for Text-to-SQL",
+"Proactive Insights & Anomaly Narration",
+"Multi-Step \"Deep Research\" Over Structured Data",
+"Natural-Language Data Prep & Agentic Data Engineering",
+"Embedded / In-Workflow Analytics (Slack, Teams, Apps)"
+]
+}
+]
+};
+const $ = (s,r=document)=>r.querySelector(s);
+const el=(t,c,h)=>{const e=document.createElement(t);if(c)e.className=c;if(h!=null)e.innerHTML=h;return e;};
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+const STAT={present:{cls:"good",g:"✓",lab:"Shipped"},partial:{cls:"warn",g:"◐",lab:"Partial"},missing:{cls:"crit",g:"✗",lab:"Missing"}};
+const TIER={"table-stakes":{tag:"TS",lab:"Table-stakes"},"competitive-parity":{tag:"P",lab:"Parity"},"differentiator":{tag:"D",lab:"Differentiator"},"future-bet":{tag:"FB",lab:"Future-bet"}};
+const CVAR={good:"var(--good)",warn:"var(--amber)",crit:"var(--crit)"};
+
+/* lede + positioning */
+$("#lede").textContent = DATA.vision;
+$("#posText").textContent = DATA.positioning;
+
+/* KPIs */
+const kpis=[
+  {cls:"accent",big:"8",sub:"/ 74",lab:"Features shipped today. 60 missing, 6 partial — an ~11%-complete product measured against the field.",tag:"gap"},
+  {cls:"",big:String(DATA.nprod),sub:"products",lab:"Competitors, frameworks & techniques benchmarked across 8 market segments.",tag:"scope"},
+  {cls:"crit",big:"6–21%",sub:"",lab:"Execution accuracy of raw text-to-SQL on real enterprise schemas (Spider 2.0). The status quo.",tag:"today"},
+  {cls:"good",big:"98–100%",sub:"",lab:"Accuracy on modeled questions when routed through a governed semantic layer. The target.",tag:"with semantic layer"},
+];
+const kw=$("#kpis");
+kpis.forEach(k=>{const c=el("div","kpi "+k.cls);
+  c.innerHTML=`<span class="tag">${k.tag}</span><div class="big tnum">${k.big}${k.sub?`<span class="sub">${k.sub}</span>`:""}</div><div class="lab">${k.lab}</div>`;
+  kw.appendChild(c);});
+
+/* accuracy cliff */
+const cliffRows=[
+  {l:"Academic benchmark",s:"Spider / clean schemas",v:"85–91%",w:88,c:"var(--muted)"},
+  {l:"Real enterprise schema",s:"raw text-to-SQL · Spider 2.0",v:"6–21%",w:21,c:"var(--crit)"},
+  {l:"Via governed semantic layer",s:"NL → metrics, not NL → raw SQL",v:"98–100%",w:99,c:"var(--good)"},
+];
+const cf=$("#cliff");
+cliffRows.forEach((r,i)=>{const row=el("div","bar-row");
+  row.innerHTML=`<div class="blab"><b>${r.l}</b>${r.s}</div>
+    <div class="track"><div class="fill" style="width:${r.w}%;background:${r.c};animation-delay:${i*.12}s"></div></div>
+    <div class="val tnum" style="color:${r.c}">${r.v}</div>`;
+  cf.appendChild(row);});
+
+/* differentiators */
+const dl=$("#diffs");
+DATA.differentiators.forEach(d=>{
+  const m=d.match(/^([^:.-]{3,60}?)[:—-]\s+(.*)$/);
+  const li=el("li",null, m?`<b>${esc(m[1].trim())}.</b> ${esc(m[2].trim())}`:esc(d));
+  dl.appendChild(li);});
+
+/* gap board */
+const board=$("#board");
+DATA.categories.forEach(cat=>{
+  const tot=cat.present+cat.partial+cat.missing||1;
+  const row=el("div","catrow");
+  const head=el("div","cathead");
+  head.innerHTML=`<div class="cname">${esc(cat.cat)}</div>
+    <div class="cmeta">
+      <div class="minibar" title="${cat.present} shipped · ${cat.partial} partial · ${cat.missing} missing">
+        <i style="width:${cat.present/tot*100}%;background:var(--good)"></i>
+        <i style="width:${cat.partial/tot*100}%;background:var(--amber)"></i>
+        <i style="width:${cat.missing/tot*100}%;background:var(--crit)"></i>
+      </div>
+      <span class="catcount tnum">${cat.present}/${tot}</span>
+    </div>`;
+  row.appendChild(head);
+  const cells=el("div","cells");
+  const order={"table-stakes":0,"competitive-parity":1,"differentiator":2,"future-bet":3};
+  cat.features.slice().sort((a,b)=>(order[a.t]-order[b.t])).forEach(f=>{
+    const st=STAT[f.s]||STAT.missing, ti=TIER[f.t]||{tag:"?",lab:f.t};
+    const cell=el("div","cell "+st.cls);
+    cell.dataset.tier=f.t;
+    cell.innerHTML=`<div class="top"><span class="glyph">${st.g}</span><span class="ttag">${ti.tag}</span></div><div class="fname">${esc(f.n)}</div>`;
+    cell.addEventListener("mouseenter",e=>showTip(e,f,st,ti));
+    cell.addEventListener("mousemove",moveTip);
+    cell.addEventListener("mouseleave",hideTip);
+    cells.appendChild(cell);
+  });
+  row.appendChild(cells);
+  board.appendChild(row);
+});
+
+/* filters */
+const filters=$("#filters");
+filters.addEventListener("click",e=>{
+  const b=e.target.closest(".fbtn"); if(!b)return;
+  [...filters.children].forEach(x=>x.setAttribute("aria-pressed",x===b));
+  const t=b.dataset.t;
+  const cells=board.querySelectorAll(".cell");
+  if(t==="all"){board.classList.remove("dim");cells.forEach(c=>c.classList.remove("match"));return;}
+  board.classList.add("dim");
+  cells.forEach(c=>c.classList.toggle("match",c.dataset.tier===t));
+});
+
+/* tooltip */
+const tip=$("#tip");
+function showTip(e,f,st,ti){
+  tip.innerHTML=`<div class="tn">${esc(f.n)}</div>
+    <div style="color:var(--ink-2)">${esc(f.d||"")}</div>
+    <div class="trow"><span class="tk">Status</span><span style="color:${CVAR[st.cls]};font-weight:600">${st.g} ${st.lab}</span></div>
+    <div class="trow"><span class="tk">Tier</span><span class="tw">${ti.lab}</span></div>
+    ${f.w?`<div class="trow"><span class="tk">Who has it</span><span class="tw">${esc(f.w)}</span></div>`:""}`;
+  tip.classList.add("on");moveTip(e);
+}
+function moveTip(e){
+  const pad=14,w=tip.offsetWidth,h=tip.offsetHeight;
+  let x=e.clientX+pad,y=e.clientY+pad;
+  if(x+w>innerWidth-8)x=e.clientX-w-pad;
+  if(y+h>innerHeight-8)y=e.clientY-h-pad;
+  tip.style.left=Math.max(8,x)+"px";tip.style.top=Math.max(8,y)+"px";
+}
+function hideTip(){tip.classList.remove("on");}
+
+/* roadmap */
+const road=$("#road");
+DATA.roadmap.forEach((p,i)=>{
+  const ph=el("div","phase p"+i);
+  const num=(p.phase.match(/\d+/)||[i])[0];
+  ph.innerHTML=`<div><div class="idx">P${num}</div></div>
+    <div><h3>${esc(p.theme||p.phase)}</h3><div class="theme">${esc(p.phase)}</div>
+      <div class="feats">${p.features.map(f=>`<span class="fchip">${esc(f)}</span>`).join("")}</div>
+      ${p.outcome?`<div class="out"><b>Outcome:</b> ${esc(p.outcome)}</div>`:""}</div>`;
+  road.appendChild(ph);
+});
+
+/* segments */
+const segs=$("#segs");
+DATA.segments.forEach(s=>{
+  const c=el("div","seg");
+  c.innerHTML=`<div class="h"><b>${esc(s.seg)}</b><span class="n tnum">${s.count}</span></div>
+    <div class="players"><span>e.g.</span> ${esc(s.top.slice(0,6).join(" · "))}</div>`;
+  segs.appendChild(c);
+});
+
+/* metrics */
+const mt=$("#metrics");
+DATA.metrics.forEach(m=>{const tr=el("tr");
+  tr.innerHTML=`<td>${esc(m.m)}</td><td class="tgt">${esc(m.t)}</td>`;mt.appendChild(tr);});
+
+/* personas */
+const pl=$("#personas");
+DATA.personas.forEach(p=>{const c=el("div","persona");
+  c.innerHTML=`<b>${esc(p.n)}</b><span>${esc(p.r)}</span>`;pl.appendChild(c);});
+
+/* theme toggle */
+const root=document.documentElement;
+function applyIcon(){const dark=getComputedStyle(root).getPropertyValue("--bg").trim().startsWith("#0")||root.dataset.theme==="dark";
+  $("#themeIcon").textContent = (root.dataset.theme==="dark")?"○":(root.dataset.theme==="light")?"●":"◐";}
+$("#themeBtn").addEventListener("click",()=>{
+  const cur=root.dataset.theme;
+  const sysDark=matchMedia("(prefers-color-scheme:dark)").matches;
+  const next = cur? (cur==="dark"?"light":"dark") : (sysDark?"light":"dark");
+  root.dataset.theme=next;$("#themeIcon").textContent=next==="dark"?"○":"●";$("#themeLbl").textContent=next==="dark"?"Dark":"Light";
+});
+
+/* reveal on scroll */
+const io=new IntersectionObserver((es)=>es.forEach(x=>{if(x.isIntersecting){x.target.classList.add("in");io.unobserve(x.target);}}),{rootMargin:"-40px"});
+document.querySelectorAll(".reveal").forEach(s=>io.observe(s));
+</script>
+
+</body>
+</html>

@@ -1,20 +1,30 @@
 [project]
 name = "talktodata"
 version = "0.1.0"
-description = "Add your description here"
+description = "DataTalker - chat with your database in natural language"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "asyncpg>=0.30.0",
+    "cachetools>=5.5.2",
+    "faker>=37.3.0",
     "fastapi>=0.115.12",
-    "langchain>=0.3.25",
-    "langchain-community>=0.3.24",
-    "langchain-openai>=0.3.18",
     "langgraph>=0.4.7",
-    "openai>=1.82.1",
     "pandas>=2.2.3",
+    "psycopg2-binary>=2.9.10",
+    "pydantic-settings>=2.15.0",
+    "pymysql>=1.2.0",
     "python-dotenv>=1.1.0",
-    "replicate>=1.0.7",
+    "python-multipart>=0.0.20",
+    "pyyaml>=6.0.2",
+    "requests>=2.32.3",
     "sqlalchemy>=2.0.41",
-    "streamlit>=1.45.1",
     "uvicorn>=0.34.2",
 ]
+
+[project.optional-dependencies]
+# Optional database drivers (NOT installed by default) — universal DB support.
+mssql = ["pyodbc>=5.0.0"]
+oracle = ["oracledb>=2.0.0"]
+snowflake = ["snowflake-sqlalchemy>=1.6.0"]
+all = ["pyodbc>=5.0.0", "oracledb>=2.0.0", "snowflake-sqlalchemy>=1.6.0"]

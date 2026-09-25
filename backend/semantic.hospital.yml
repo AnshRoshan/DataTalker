@@ -1,0 +1,72 @@
+# Semantic layer for backend/hospital.db (EC-09).
+# Point DATATALKER_SEMANTIC_FILE at this file to give the SQL writer
+# business-level definitions on top of the raw schema.
+tables:
+  patients:
+    description: "People admitted to or treated by the hospital"
+    synonyms: ["person", "individual", "client"]
+    columns:
+      patient_id: "Unique patient identifier"
+      name: "Patient full name"
+      dob: "Date of birth (TEXT, ISO date)"
+      gender: "Patient gender (e.g. Male/Female)"
+      address: "Home address"
+      phone: "Contact phone number"
+  doctors:
+    description: "Physicians employed by the hospital"
+    synonyms: ["physician", "clinician", "consultant"]
+    columns:
+      doctor_id: "Unique doctor identifier"
+      name: "Doctor full name"
+      specialty: "Medical specialty (e.g. Cardiology)"
+      department_id: "FK to departments"
+      email: "Work email"
+  departments:
+    description: "Hospital departments (e.g. Cardiology, Neurology)"
+    synonyms: ["units", "wards"]
+    columns:
+      department_id: "Unique department identifier"
+      name: "Department name"
+  appointments:
+    description: "Patient visits scheduled with doctors"
+    synonyms: ["visits", "consultations"]
+    columns:
+      appointment_id: "Unique appointment identifier"
+      patient_id: "FK to patients"
+      doctor_id: "FK to doctors"
+      appointment_date: "When the appointment takes place (TEXT, ISO timestamp)"
+      reason: "Reason for the visit"
+  medical_records:
+    description: "Diagnoses and treatments recorded per visit"
+    synonyms: ["records", "charts"]
+    columns:
+      record_id: "Unique record identifier"
+      patient_id: "FK to patients"
+      doctor_id: "FK to doctors"
+      diagnosis: "Diagnosis text"
+      treatment: "Treatment applied"
+      record_date: "When the record was created (TEXT, ISO timestamp)"
+  medications:
+    description: "Drugs that can be prescribed"
+    synonyms: ["drugs", "medicines"]
+    columns:
+      medication_id: "Unique medication identifier"
+      name: "Medication name"
+      description: "What the medication is for"
+  prescriptions:
+    description: "Medications prescribed within a medical record"
+    synonyms: ["scripts", "prescribed drugs"]
+    columns:
+      prescription_id: "Unique prescription identifier"
+      record_id: "FK to medical_records"
+      medication_id: "FK to medications"
+      dosage: "Dose amount (e.g. 500mg)"
+      frequency: "How often to take (e.g. twice daily)"
+
+metrics:
+  total_patients:
+    description: "Number of patients registered"
+    sql: "SELECT COUNT(*) FROM patients"
+  patients_per_department:
+    description: "Distinct patients treated per department, via doctor assignments"
+    sql: "SELECT d.name, COUNT(DISTINCT a.patient_id) AS patients FROM appointments a JOIN doctors d ON a.doctor_id = d.doctor_id GROUP BY d.name"

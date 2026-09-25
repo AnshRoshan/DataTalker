@@ -1,0 +1,7 @@
+{
+  "allowed_tables": ["patients", "doctors", "departments", "appointments", "medical_records", "medications", "prescriptions"],
+  "masked_columns": {
+    "patients.phone": "partial",
+    "patients.address": "full"
+  }
+}

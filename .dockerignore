@@ -1,0 +1,16 @@
+# Keep the image slim: frontend deps are installed inside the bun stage.
+frontend/node_modules
+frontend/dist
+**/__pycache__
+**/.venv
+.git
+.code-review-graph
+.tokensave
+.video_agent
+.superpowers
+.claude
+docs
+*.log
+backend/logs
+backend/data
+backend/.env

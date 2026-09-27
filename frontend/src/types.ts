@@ -153,4 +153,94 @@ export type ActiveDbRef =
 
 export type HealthStatus = 'checking' | 'connected' | 'disconnected';
 
-export type ViewId = 'chat' | 'connections' | 'schema';
+export type ViewId = 'chat' | 'sql' | 'connections' | 'schema' | 'library' | 'insights';
+
+/* ------------------------------------------------------------------ */
+/* SQL console (POST /sql/)                                            */
+/* ------------------------------------------------------------------ */
+
+export interface SqlRunResponse {
+  sql: string;
+  results: Record<string, unknown>[];
+  row_count: number;
+  sql_executed: boolean;
+  validator_rejected: boolean;
+  results_truncated?: boolean;
+  row_cap?: number;
+  reason: string | null;
+  latency_ms: number;
+}
+
+/* ------------------------------------------------------------------ */
+/* Conversations (/conversations/)                                     */
+/* ------------------------------------------------------------------ */
+
+export interface ConversationHeader {
+  id: string;
+  title: string;
+  created_at?: string;
+  updated_at?: string;
+  source?: string | null;
+  message_count: number;
+}
+
+export interface Conversation extends Omit<ConversationHeader, 'message_count'> {
+  messages: ChatMessageData[];
+}
+
+/* ------------------------------------------------------------------ */
+/* Saved queries (/queries/)                                           */
+/* ------------------------------------------------------------------ */
+
+export interface SavedQuery {
+  id: string;
+  name: string;
+  sql: string;
+  dialect?: string | null;
+  source?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  last_run_at?: string | null;
+  run_count?: number;
+}
+
+/* ------------------------------------------------------------------ */
+/* Insights (/stats/, /history/) — derived from the audit log          */
+/* ------------------------------------------------------------------ */
+
+export interface ActivityDay {
+  date: string;
+  questions: number;
+  blocked: number;
+}
+
+export interface Stats {
+  window_days: number;
+  questions: number;
+  questions_in_window: number;
+  executed: number;
+  blocked: number;
+  truncated: number;
+  rows_returned: number;
+  avg_latency_ms: number | null;
+  p95_latency_ms: number | null;
+  slowest_ms: number | null;
+  dialects: Record<string, number>;
+  activity: ActivityDay[];
+  sign_ins: number;
+  schema_reads: number;
+  audit_enabled: boolean;
+}
+
+export interface HistoryEntry {
+  timestamp?: string;
+  request_id?: string;
+  question: string;
+  sql: string;
+  dialect?: string | null;
+  executed: boolean;
+  validator_rejected: boolean;
+  row_count: number;
+  truncated: boolean;
+  latency_ms?: number | null;
+}

@@ -9,6 +9,7 @@ import type {
   NewConnectionInput,
   ViewId,
 } from '../types';
+import { dbRefLabel } from '../lib/format';
 import {
   createConnection,
   checkConnection,
@@ -32,13 +33,23 @@ import {
 import type { AuthUser } from '../lib/auth';
 import { signOut } from '../lib/auth';
 import type { Theme } from '../lib/theme';
+import type { ConversationHeader } from '../types';
+import {
+  deleteConversation as apiDeleteConversation,
+  fetchConversation,
+  fetchConversations,
+  putConversation,
+} from '../lib/api';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import SettingsModal from './SettingsModal';
 import ChatView from './chat/ChatView';
+import SqlLabView from './sql/SqlLabView';
 
 const ConnectionsView = lazy(() => import('./connections/ConnectionsView'));
 const SchemaView = lazy(() => import('./schema/SchemaView'));
+const LibraryView = lazy(() => import('./library/LibraryView'));
+const InsightsView = lazy(() => import('./insights/InsightsView'));
 
 const ViewFallback: React.FC = () => (
   <div className="flex flex-1 items-center justify-center">
@@ -77,6 +88,24 @@ const Workspace: React.FC<WorkspaceProps> = ({ user, googleEnabled, onSignedOut,
   const [connectionsError, setConnectionsError] = useState<string | null>(null);
 
   const [health, setHealth] = useState<HealthStatus>('checking');
+
+  // Server-side threads: the browser keeps the working copy, the server keeps history.
+  const [conversations, setConversations] = useState<ConversationHeader[]>([]);
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  /** Statement handed from the library to the console. */
+  const [sqlDraft, setSqlDraft] = useState<string | null>(null);
+
+  const refreshConversations = useCallback(async () => {
+    try {
+      setConversations(await fetchConversations(apiUrl, apiKey));
+    } catch {
+      /* a missing/failed list must not break the chat; it will retry on next save */
+    }
+  }, [apiUrl, apiKey]);
+
+  useEffect(() => {
+    void refreshConversations();
+  }, [refreshConversations]);
 
   // A bring-your-own model key lives in this browser; restore it before the first request.
   useEffect(() => {
@@ -239,25 +268,37 @@ const Workspace: React.FC<WorkspaceProps> = ({ user, googleEnabled, onSignedOut,
           results = keys.every(k => /^\d+$/.test(k)) ? results : data.results;
         }
 
-        setMessages(prev =>
-          prev.map(m =>
-            m.id === newChat.id
-              ? {
-                  ...m,
-                  answer: data.answer || 'No answer provided.',
-                  sql: data.sql_executed || data.sql || '',
-                  results,
-                  follow_up_questions: data.follow_up_questions || [],
-                  results_truncated: data.results_truncated,
-                  sql_executed: data.sql_executed,
-                  latency_ms: data.latency_ms,
-                  row_cap: data.row_cap,
-                  isTyping: false,
-                }
-              : m,
-          ),
-        );
+        const finished: ChatMessageData = {
+          ...newChat,
+          answer: data.answer || 'No answer provided.',
+          sql: data.sql_executed || data.sql || '',
+          results,
+          follow_up_questions: data.follow_up_questions || [],
+          results_truncated: data.results_truncated,
+          sql_executed: data.sql_executed,
+          latency_ms: data.latency_ms,
+          row_cap: data.row_cap,
+          isTyping: false,
+        };
+        const nextMessages = [...messages, finished];
+        setMessages(nextMessages);
         if (activeRef.kind !== 'connection') setQuickRefOk(true);
+
+        // Persisting is best-effort: a thread the user can see must not become an
+        // error banner just because the history store rejected the write.
+        try {
+          const header = await putConversation({
+            apiUrl,
+            apiKey,
+            id: activeConversationId,
+            messages: nextMessages,
+            source: dbRefLabel(activeRef),
+          });
+          setActiveConversationId(header.id);
+          setConversations(prev => [header, ...prev.filter(c => c.id !== header.id)]);
+        } catch {
+          /* localStorage still holds the thread; see saveChatHistory below */
+        }
       } catch (err) {
         const message = getErrorMessage(err, timedOut);
         if (!axios.isCancel(err)) {
@@ -281,18 +322,57 @@ const Workspace: React.FC<WorkspaceProps> = ({ user, googleEnabled, onSignedOut,
         setIsLoading(false);
       }
     },
-    [activeRef, apiUrl, apiKey, isLoading, messages],
+    [activeConversationId, activeRef, apiUrl, apiKey, isLoading, messages],
   );
 
   const handleCancel = useCallback(() => {
     abortRef.current?.abort();
   }, []);
 
+  /** Start a fresh thread. The previous one is already persisted server-side. */
   const handleClearChat = useCallback(() => {
     abortRef.current?.abort();
     setMessages([]);
     setChatError(null);
+    setActiveConversationId(null);
   }, []);
+
+  const openConversation = useCallback(
+    async (id: string) => {
+      try {
+        const thread = await fetchConversation(apiUrl, apiKey, id);
+        setMessages(
+          (thread.messages ?? []).map(m => ({
+            ...m,
+            results: Array.isArray(m.results) ? m.results : [],
+            isTyping: false,
+          })),
+        );
+        setActiveConversationId(id);
+        setChatError(null);
+        setView('chat');
+      } catch (err) {
+        setChatError(getErrorMessage(err));
+      }
+    },
+    [apiUrl, apiKey],
+  );
+
+  const removeConversation = useCallback(
+    async (id: string) => {
+      try {
+        await apiDeleteConversation(apiUrl, apiKey, id);
+        setConversations(prev => prev.filter(c => c.id !== id));
+        if (activeConversationId === id) {
+          setActiveConversationId(null);
+          setMessages([]);
+        }
+      } catch (err) {
+        setChatError(getErrorMessage(err));
+      }
+    },
+    [activeConversationId, apiUrl, apiKey],
+  );
 
   const handleSaveSettings = useCallback((s: { apiUrl: string; apiKey: string }) => {
     const normalizedUrl = s.apiUrl.replace(/\/$/, '');
@@ -313,7 +393,10 @@ const Workspace: React.FC<WorkspaceProps> = ({ user, googleEnabled, onSignedOut,
         view={view}
         onChange={setView}
         onNewChat={handleClearChat}
-        hasMessages={messages.length > 0}
+        conversations={conversations}
+        activeConversationId={activeConversationId}
+        onOpenConversation={id => void openConversation(id)}
+        onDeleteConversation={id => void removeConversation(id)}
         connectionCount={connections.length}
         user={user}
         onSignOut={() => void handleSignOut()}
@@ -346,6 +429,14 @@ const Workspace: React.FC<WorkspaceProps> = ({ user, googleEnabled, onSignedOut,
             onClearChat={handleClearChat}
             onGoToConnections={() => setView('connections')}
           />
+        ) : view === 'sql' ? (
+          <SqlLabView
+            apiUrl={apiUrl}
+            apiKey={apiKey}
+            dbRef={activeRef}
+            initialSql={sqlDraft}
+            onGoToConnections={() => setView('connections')}
+          />
         ) : view === 'connections' ? (
           <Suspense fallback={<ViewFallback />}>
             <ConnectionsView
@@ -361,9 +452,24 @@ const Workspace: React.FC<WorkspaceProps> = ({ user, googleEnabled, onSignedOut,
               onQuickAttach={handleQuickAttach}
             />
           </Suspense>
-        ) : (
+        ) : view === 'schema' ? (
           <Suspense fallback={<ViewFallback />}>
             <SchemaView apiUrl={apiUrl} apiKey={apiKey} dbRef={activeRef} />
+          </Suspense>
+        ) : view === 'library' ? (
+          <Suspense fallback={<ViewFallback />}>
+            <LibraryView
+              apiUrl={apiUrl}
+              apiKey={apiKey}
+              onRun={query => {
+                setSqlDraft(query.sql);
+                setView('sql');
+              }}
+            />
+          </Suspense>
+        ) : (
+          <Suspense fallback={<ViewFallback />}>
+            <InsightsView apiUrl={apiUrl} apiKey={apiKey} />
           </Suspense>
         )}
       </div>

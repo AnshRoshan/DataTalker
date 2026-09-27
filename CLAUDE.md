@@ -16,7 +16,7 @@ landed earlier; Phase 3 added env-driven settings, pooled DB engines, rate limit
 timeouts, real `/health`, audit log, governance-lite, semantic layer, MySQL, chat history.
 Phase 4 added: **schema graph + relevance retrieval** (huge schemas are pruned per-question),
 a **connections registry** with **preflight checks**, and **universal SQLAlchemy URL support**
-(any dialect; extras for mssql/oracle/snowflake). All 23 `backend/test_*.py` scripts pass; the
+(any dialect; extras for mssql/oracle/snowflake). All 28 `backend/test_*.py` scripts pass; the
 full pipeline is verified end-to-end against the bundled fixtures.
 
 ## Repo layout (all of it is real now — the dead "enterprise" stack and legacy UI are gone)
@@ -31,6 +31,7 @@ backend/
   services/
     schema_service.py     schema extraction + cache orchestration + governance filter
     query_service.py      NL→SQL orchestration; history, governance masking, response shaping
+    sql_service.py        SQL console: same validator + executor as the chat path, no model
   graphs/
     query_graph.py        LIVE LangGraph: writer→validator→executor→(retry)→formatter
     schema_graph.py       LIVE single-node schema-reflection graph
@@ -47,7 +48,13 @@ backend/
     engines.py            pooled SQLAlchemy engines per db_uri (bounded, TTL-evicted); SQLite query_only pin
     schema_graph.py       tables/cols nodes + FK edges + inferred joins; compact prompt renderer
     schema_retrieval.py   per-question relevance pruning of huge schemas (top-K + 1-hop neighbors)
-    connections.py        JSON-file registry of saved connections (masked URIs only in responses)
+    json_store.py       the one JSON-collection store (atomic write, tolerant read) behind:
+    connections.py        saved connections (masked URIs only in responses)
+    conversations.py      persisted chat threads, scoped by owner
+    saved_queries.py      library of statements, scoped by owner
+    stats.py              Insights aggregates read straight back off the audit log
+    bootstrap.py          first-run registration of the bundled demo fixtures
+    auth.py               Google ID-token verification + signed stateless session cookie
     preflight.py          any-URL connection check (dialect, server version, table count, warnings)
     ratelimit.py          sliding-window per-IP limiter (middleware on POST /chat/ + /schema/)
     audit.py              append-only JSONL audit log (who-asked-what + SQL verdict + latency)
@@ -61,7 +68,7 @@ backend/
   Database/PopulateDB.py  Faker-based sample-data generator
   hospital.db, multi_table.db   ready-to-use SQLite fixtures
   governance.example.json  semantic.hospital.yml   ← example configs for the two optional features
-  test_*.py               23 assert-based test scripts run directly (`uv run python test_x.py`)
+  test_*.py               28 assert-based test scripts run directly (`uv run python test_x.py`)
 
 frontend/                 React 19 + Vite 6 + Tailwind 4, package manager = bun
   src/App.tsx             the router: `/` landing, `/login`, `/studio` workspace

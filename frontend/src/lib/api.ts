@@ -1,13 +1,20 @@
 import axios from 'axios';
 import type {
   ActiveDbRef,
+  ChatMessageData,
+  Conversation,
+  ConversationHeader,
   ChatResponse,
   Connection,
   ConnectionCheckResponse,
   ConnectionsResponse,
   HealthStatus,
+  HistoryEntry,
   NewConnectionInput,
+  SavedQuery,
   SchemaGraphResponse,
+  SqlRunResponse,
+  Stats,
 } from '../types';
 
 export const REQUEST_TIMEOUT_MS = 120_000;
@@ -168,4 +175,114 @@ export async function fetchSchemaGraph(opts: {
     timeout: 120_000,
   });
   return res.data;
+}
+
+/* ------------------------------------------------------------------ */
+/* SQL console, conversations, saved queries, insights                  */
+/* ------------------------------------------------------------------ */
+
+export async function runSql(opts: {
+  apiUrl: string;
+  apiKey: string;
+  sql: string;
+  dbRef: ActiveDbRef | null;
+  signal?: AbortSignal;
+}): Promise<SqlRunResponse> {
+  const formData = new FormData();
+  formData.append('sql', opts.sql);
+  appendDbRef(formData, opts.dbRef);
+  const res = await axios.post<SqlRunResponse>(`${opts.apiUrl}/sql/`, formData, {
+    headers: authHeaders(opts.apiKey),
+    signal: opts.signal,
+  });
+  return res.data;
+}
+
+export async function fetchConversations(apiUrl: string, apiKey: string): Promise<ConversationHeader[]> {
+  const res = await axios.get<{ conversations: ConversationHeader[] }>(`${apiUrl}/conversations/`, {
+    headers: authHeaders(apiKey),
+    timeout: 20_000,
+  });
+  return res.data.conversations ?? [];
+}
+
+export async function fetchConversation(
+  apiUrl: string,
+  apiKey: string,
+  id: string,
+): Promise<Conversation> {
+  const res = await axios.get<Conversation>(`${apiUrl}/conversations/${id}`, {
+    headers: authHeaders(apiKey),
+    timeout: 20_000,
+  });
+  return res.data;
+}
+
+export async function putConversation(opts: {
+  apiUrl: string;
+  apiKey: string;
+  id: string | null;
+  messages: ChatMessageData[];
+  source?: string | null;
+}): Promise<ConversationHeader> {
+  const res = await axios.post<ConversationHeader>(
+    `${opts.apiUrl}/conversations/`,
+    { id: opts.id, messages: opts.messages, source: opts.source ?? null },
+    { headers: authHeaders(opts.apiKey), timeout: 20_000 },
+  );
+  return res.data;
+}
+
+export async function deleteConversation(apiUrl: string, apiKey: string, id: string): Promise<void> {
+  await axios.delete(`${apiUrl}/conversations/${id}`, { headers: authHeaders(apiKey), timeout: 20_000 });
+}
+
+export async function fetchSavedQueries(apiUrl: string, apiKey: string): Promise<SavedQuery[]> {
+  const res = await axios.get<{ queries: SavedQuery[] }>(`${apiUrl}/queries/`, {
+    headers: authHeaders(apiKey),
+    timeout: 20_000,
+  });
+  return res.data.queries ?? [];
+}
+
+export async function putSavedQuery(
+  apiUrl: string,
+  apiKey: string,
+  input: { id?: string | null; name: string; sql: string; dialect?: string | null; source?: string | null },
+): Promise<SavedQuery> {
+  const res = await axios.post<SavedQuery>(`${apiUrl}/queries/`, input, {
+    headers: authHeaders(apiKey),
+    timeout: 20_000,
+  });
+  return res.data;
+}
+
+export async function deleteSavedQuery(apiUrl: string, apiKey: string, id: string): Promise<void> {
+  await axios.delete(`${apiUrl}/queries/${id}`, { headers: authHeaders(apiKey), timeout: 20_000 });
+}
+
+export async function markSavedQueryRun(
+  apiUrl: string,
+  apiKey: string,
+  id: string,
+): Promise<void> {
+  await axios.post(`${apiUrl}/queries/${id}/run`, null, { headers: authHeaders(apiKey), timeout: 20_000 });
+}
+
+export async function fetchStats(apiUrl: string, apiKey: string, days = 14): Promise<Stats> {
+  const res = await axios.get<Stats>(`${apiUrl}/stats`, {
+    params: { window_days: days },
+    headers: authHeaders(apiKey),
+    timeout: 20_000,
+  });
+  return res.data;
+}
+
+export async function fetchHistory(apiUrl: string, apiKey: string, limit = 100): Promise<HistoryEntry[]> {
+  const res = await axios.get<{ history: HistoryEntry[] }>(`${apiUrl}/history`, {
+    params: { limit },
+    headers: authHeaders(apiKey),
+    timeout: 20_000,
+  });
+  return res.data.history ?? [];
 }

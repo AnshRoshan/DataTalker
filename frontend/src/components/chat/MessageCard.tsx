@@ -1,9 +1,52 @@
 import React, { useState } from 'react';
-import { Check, ChevronRight, Copy } from 'lucide-react';
+import { BarChart3, Check, ChevronRight, Copy, Table2 } from 'lucide-react';
 import type { ChatMessageData } from '../../types';
 import { formatLatency } from '../../lib/format';
 import { renderMarkdown } from '../../lib/markdown';
+import ChartView from '../ChartView';
+import { hasPlottableColumn } from '../../lib/chart';
 import ResultsTable from '../ResultsTable';
+
+/** Results or chart, same rows. Only rendered when a numeric column exists, so the
+ * control never opens an empty box. */
+const ChartToggle: React.FC<{ rows: Record<string, unknown>[] }> = ({ rows }) => {
+  const [asChart, setAsChart] = useState(false);
+  if (!hasPlottableColumn(rows)) return null;
+
+  return (
+    <div className="mt-3">
+      <div className="mb-2 flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() => setAsChart(false)}
+          aria-pressed={!asChart}
+          className="btn h-7 px-2 text-[11px]"
+          style={{
+            background: asChart ? 'transparent' : 'var(--color-surface)',
+            color: asChart ? 'var(--color-faint)' : 'var(--color-fg)',
+            border: '1px solid var(--color-border)',
+          }}
+        >
+          <Table2 className="size-3" /> Table
+        </button>
+        <button
+          type="button"
+          onClick={() => setAsChart(true)}
+          aria-pressed={asChart}
+          className="btn h-7 px-2 text-[11px]"
+          style={{
+            background: asChart ? 'var(--color-surface)' : 'transparent',
+            color: asChart ? 'var(--color-fg)' : 'var(--color-faint)',
+            border: '1px solid var(--color-border)',
+          }}
+        >
+          <BarChart3 className="size-3" /> Chart
+        </button>
+      </div>
+      {asChart ? <ChartView rows={rows} /> : <ResultsTable results={rows} />}
+    </div>
+  );
+};
 
 /** Collapsible SQL block: deeper-than-surface code panel with a header row. */
 const SqlBlock: React.FC<{ sql: string }> = ({ sql }) => {
@@ -106,7 +149,13 @@ const MessageCard: React.FC<MessageCardProps> = ({ message, onFollowUpClick }) =
 
             {message.sql ? <SqlBlock sql={message.sql_executed || message.sql} /> : null}
 
-            <ResultsTable results={message.results} />
+            {/* One row can't chart; a result set with a numeric column gets the
+                table/chart switch, everything else just the table. */}
+            {Array.isArray(message.results) && message.results.length > 1 && hasPlottableColumn(message.results) ? (
+              <ChartToggle rows={message.results} />
+            ) : (
+              <ResultsTable results={message.results} />
+            )}
 
             {message.results_truncated ? (
               <p className="mt-2 text-[11.5px] text-muted">

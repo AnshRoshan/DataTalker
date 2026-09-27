@@ -26,6 +26,8 @@ from .models import (
     LLMModelSelection,
     AuthUser,
     GoogleCallback,
+    ConversationIn,
+    SavedQueryIn,
 )
 from services.schema_service import SchemaService
 from services.query_service import QueryService
@@ -39,6 +41,19 @@ from core.logging_config import request_id_var
 from core.settings import get_settings
 
 logger = logging.getLogger(__name__)
+
+
+def _claims(request: Request):
+    """The verified session identity, or None on an unauthenticated install."""
+    from core.auth import current_user
+
+    return current_user(request)
+
+
+def _owner(request: Request) -> str:
+    from core.conversations import owner_of
+
+    return owner_of(_claims(request))
 
 
 def create_endpoints(app: FastAPI, serve_spa: bool = False) -> None:
@@ -392,6 +407,151 @@ def create_endpoints(app: FastAPI, serve_spa: bool = False) -> None:
 
         clear_selected_model()
         return JSONResponse(content={"provider": provider_name(), "model": None})
+
+    # ------------------------------------------------------------- SQL console
+    @app.post("/sql/", dependencies=[Depends(require_api_key)])
+    def run_sql_console(
+        request: Request,
+        sql: str = Form(...),
+        db_file: Optional[UploadFile] = File(None),
+        db_path: Optional[str] = Form(None),
+        db_url: Optional[str] = Form(None),
+        db_connection_string: Optional[str] = Form(None),
+        connection_id: Optional[str] = Form(None),
+    ):
+        """Run a hand-written statement through the same read-only guard as the chat
+        path. Rejected statements come back as a 200 with the reason, because a refusal
+        is a normal, useful result here rather than a client error."""
+        from core.file_handler import cleanup_temp_file
+        from services.sql_service import SqlConsoleService
+
+        temp_file_to_cleanup = None
+        started = time.perf_counter()
+        try:
+            db_uri, db_dialect, local_db_path, temp_file_to_cleanup = (
+                DatabaseInputHandler.process_database_input(
+                    db_file, db_path, db_url, db_connection_string, connection_id
+                )
+            )
+            schema_data = SchemaService.extract_and_cache_schema(db_uri, db_dialect, local_db_path)
+            result = SqlConsoleService.run(
+                sql, db_uri, db_dialect, masked_columns=schema_data.get("masked_columns")
+            )
+            record_audit({
+                "event": "sql_console",
+                "request_id": request_id_var.get(),
+                "dialect": db_dialect,
+                "sql": (result.get("sql") or "")[:1000],
+                "executed": bool(result.get("sql_executed")),
+                "validator_rejected": bool(result.get("validator_rejected")),
+                "row_count": result.get("row_count", 0),
+                "truncated": bool(result.get("results_truncated")),
+                "connection_id": connection_id,
+                "latency_ms": result.get("latency_ms")
+                or round((time.perf_counter() - started) * 1000),
+                "owner": _owner(request),
+            })
+            return JSONResponse(content=result)
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.warning("internal error: %r", e, exc_info=True)
+            raise HTTPException(status_code=500, detail="Internal server error.")
+        finally:
+            if temp_file_to_cleanup:
+                cleanup_temp_file(temp_file_to_cleanup)
+
+    # --------------------------------------------------------- conversations
+    @app.get("/conversations/", dependencies=[Depends(require_api_key)])
+    def list_conversations_endpoint(request: Request):
+        """Header rows for the caller's threads — titles and counts, no message bodies."""
+        from core.conversations import list_conversations, owner_of
+
+        conversations = list_conversations(owner_of(_claims(request)))
+        return JSONResponse(content={"conversations": conversations, "total": len(conversations)})
+
+    @app.get("/conversations/{conversation_id}", dependencies=[Depends(require_api_key)])
+    def get_conversation_endpoint(request: Request, conversation_id: str):
+        from core.conversations import get_conversation, owner_of
+
+        thread = get_conversation(conversation_id, owner_of(_claims(request)))
+        if thread is None:
+            raise HTTPException(status_code=404, detail="Conversation not found.")
+        return JSONResponse(content=thread)
+
+    @app.post("/conversations/", dependencies=[Depends(require_api_key)])
+    def save_conversation_endpoint(request: Request, body: ConversationIn):
+        from core.conversations import owner_of, save_conversation
+
+        header = save_conversation(
+            conversation_id=body.id, messages=body.messages,
+            owner=owner_of(_claims(request)), source=body.source,
+        )
+        return JSONResponse(content=header)
+
+    @app.delete("/conversations/{conversation_id}", dependencies=[Depends(require_api_key)])
+    def delete_conversation_endpoint(request: Request, conversation_id: str):
+        from core.conversations import delete_conversation, owner_of
+
+        if not delete_conversation(conversation_id, owner_of(_claims(request))):
+            raise HTTPException(status_code=404, detail="Conversation not found.")
+        return JSONResponse(content={"message": "Conversation deleted.", "id": conversation_id})
+
+    # ---------------------------------------------------------- saved queries
+    @app.get("/queries/", dependencies=[Depends(require_api_key)])
+    def list_saved_endpoint(request: Request):
+        from core.saved_queries import ANONYMOUS, list_saved
+
+        queries = list_saved(_owner(request) or ANONYMOUS)
+        return JSONResponse(content={"queries": queries, "total": len(queries)})
+
+    @app.post("/queries/", dependencies=[Depends(require_api_key)])
+    def save_query_endpoint(request: Request, body: SavedQueryIn):
+        from core.saved_queries import ANONYMOUS, save_query
+
+        try:
+            record = save_query(
+                query_id=body.id, name=body.name, sql=body.sql, dialect=body.dialect,
+                owner=_owner(request) or ANONYMOUS, source=body.source,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except KeyError:
+            raise HTTPException(status_code=404, detail="Query not found.")
+        return JSONResponse(content=record, status_code=201)
+
+    @app.delete("/queries/{query_id}", dependencies=[Depends(require_api_key)])
+    def delete_saved_endpoint(request: Request, query_id: str):
+        from core.saved_queries import ANONYMOUS, delete_saved
+
+        if not delete_saved(query_id, _owner(request) or ANONYMOUS):
+            raise HTTPException(status_code=404, detail="Query not found.")
+        return JSONResponse(content={"message": "Query deleted.", "id": query_id})
+
+    @app.post("/queries/{query_id}/run", dependencies=[Depends(require_api_key)])
+    def mark_query_run_endpoint(request: Request, query_id: str):
+        """Records that a library entry was re-run; the statement itself executes
+        through /sql/, so this endpoint cannot run anything."""
+        from core.saved_queries import ANONYMOUS, mark_run
+
+        record = mark_run(query_id, _owner(request) or ANONYMOUS)
+        if record is None:
+            raise HTTPException(status_code=404, detail="Query not found.")
+        return JSONResponse(content=record)
+
+    # ----------------------------------------------------------------- insights
+    @app.get("/stats", dependencies=[Depends(require_api_key)])
+    async def stats_endpoint(window_days: int = 14):
+        """Usage, safety and latency aggregates read straight from the audit log."""
+        from core.stats import summarize
+
+        return summarize(window_days=max(1, min(window_days, 90)))
+
+    @app.get("/history", dependencies=[Depends(require_api_key)])
+    async def history_endpoint(limit: int = 100):
+        from core.stats import recent_history
+
+        return {"history": recent_history(max(1, min(limit, 500)))}
 
     @app.get("/schema/cache", response_model=CacheResponse, dependencies=[Depends(require_api_key)])
     async def get_schema_cache_info():

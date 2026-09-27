@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     # Key for the signed session cookie. Falls back to DATATALKER_API_KEY if unset.
     session_secret: str = ""
 
+    # Register the bundled SQLite fixtures as demo sources on a first, empty run so a
+    # new deployment is usable before anyone attaches a database.
+    bootstrap_demo: bool = True
     # CORS — explicit origins (no wildcard-with-credentials). Comma-separated.
     cors_origins: str = Field(
         default="http://localhost:5173,http://127.0.0.1:5173",

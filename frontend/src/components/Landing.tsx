@@ -163,7 +163,7 @@ const Landing: React.FC<{ theme: Theme; onToggleTheme: () => void }> = ({
             >
               {[
                 ['3', 'dialects built in'],
-                ['25', 'checks on the pipeline'],
+                ['28', 'checks on the pipeline'],
                 ['0', 'writes, ever'],
               ].map(([value, key]) => (
                 <div key={key}>

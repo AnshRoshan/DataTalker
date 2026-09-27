@@ -68,6 +68,29 @@ class ClearCacheResponse(BaseModel):
     cleared_count: int
 
 
+class ConversationIn(BaseModel):
+    """Body for POST /conversations/ — an upsert of one thread.
+
+    `messages` is client-shaped (the chat payload); the store clips, trims and rebuilds
+    it, so nothing here is trusted to be well-formed or small.
+    """
+    id: Optional[str] = None
+    source: Optional[str] = None
+    # Deliberately List[Any]: the store sanitizes each entry (drops non-objects, clips
+    # long text, trims rows). Typing this as List[Dict] would make a single malformed
+    # turn reject the whole thread with a 422 the client cannot act on.
+    messages: List[Any] = Field(default_factory=list)
+
+
+class SavedQueryIn(BaseModel):
+    """Body for POST /queries/ — save or update a statement. Never a credential."""
+    id: Optional[str] = None
+    name: str = ""
+    sql: str = Field(..., description="A single read-only statement")
+    dialect: Optional[str] = None
+    source: Optional[str] = Field(None, description="Display name of the database it targets")
+
+
 class GoogleCallback(BaseModel):
     """Request body for POST /auth/google — the credential GSI handed the browser."""
     credential: str = Field(..., description="Google ID token, verified server-side")

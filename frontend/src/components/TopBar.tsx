@@ -1,19 +1,25 @@
 import React from 'react';
-import { Database, MessageSquare, Settings, Waypoints } from 'lucide-react';
+import { Activity, BookMarked, Database, MessageSquare, Settings, SquareTerminal, Waypoints } from 'lucide-react';
 import type { ActiveDbRef, HealthStatus, ViewId } from '../types';
 import { dbRefLabel } from '../lib/format';
 import { StatusDot } from './ui';
 
 const TITLES: Record<ViewId, { title: string; sub: string }> = {
   chat: { title: 'Ask', sub: 'natural language → read-only sql' },
+  sql: { title: 'SQL lab', sub: 'write it yourself, same guard' },
   connections: { title: 'Sources', sub: 'databases, attachments, preflight' },
   schema: { title: 'Schema', sub: 'tables, columns, join paths' },
+  library: { title: 'Library', sub: 'saved queries & activity log' },
+  insights: { title: 'Pulse', sub: 'usage, safety and latency' },
 };
 
 const MOBILE_NAV: { id: ViewId; label: string; Icon: typeof MessageSquare }[] = [
   { id: 'chat', label: 'Ask', Icon: MessageSquare },
+  { id: 'sql', label: 'SQL lab', Icon: SquareTerminal },
   { id: 'connections', label: 'Sources', Icon: Database },
   { id: 'schema', label: 'Schema', Icon: Waypoints },
+  { id: 'library', label: 'Library', Icon: BookMarked },
+  { id: 'insights', label: 'Pulse', Icon: Activity },
 ];
 
 interface TopBarProps {

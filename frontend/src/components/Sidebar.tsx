@@ -1,31 +1,42 @@
 import React from 'react';
 import {
+  Activity,
+  BookMarked,
   Database,
   LogOut,
   MessageSquare,
   Moon,
   Plus,
   Settings,
+  SquareTerminal,
   Sun,
+  Trash2,
   Waypoints,
 } from 'lucide-react';
-import type { ViewId } from '../types';
+import type { ConversationHeader, ViewId } from '../types';
 import type { AuthUser } from '../lib/auth';
 import type { Theme } from '../lib/theme';
+import { relativeTime } from '../lib/format';
 import { Link } from './ui';
 import { Mark } from './Mark';
 
 const NAV: { id: ViewId; label: string; Icon: typeof MessageSquare }[] = [
   { id: 'chat', label: 'Ask', Icon: MessageSquare },
+  { id: 'sql', label: 'SQL lab', Icon: SquareTerminal },
   { id: 'connections', label: 'Sources', Icon: Database },
   { id: 'schema', label: 'Schema', Icon: Waypoints },
+  { id: 'library', label: 'Library', Icon: BookMarked },
+  { id: 'insights', label: 'Pulse', Icon: Activity },
 ];
 
 interface SidebarProps {
   view: ViewId;
   onChange: (view: ViewId) => void;
   onNewChat: () => void;
-  hasMessages: boolean;
+  conversations: ConversationHeader[];
+  activeConversationId: string | null;
+  onOpenConversation: (id: string) => void;
+  onDeleteConversation: (id: string) => void;
   connectionCount: number;
   user: AuthUser | null;
   onSignOut: () => void;
@@ -41,7 +52,10 @@ const Sidebar: React.FC<SidebarProps> = ({
   view,
   onChange,
   onNewChat,
-  hasMessages,
+  conversations,
+  activeConversationId,
+  onOpenConversation,
+  onDeleteConversation,
   connectionCount,
   user,
   onSignOut,
@@ -69,13 +83,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     </div>
 
     <div className="shrink-0 p-3">
-      <button
-        type="button"
-        onClick={onNewChat}
-        disabled={!hasMessages}
-        className="btn btn-primary h-9 w-full"
-        title={hasMessages ? 'Start a new conversation' : 'No conversation in progress'}
-      >
+      <button type="button" onClick={onNewChat} className="btn btn-primary h-9 w-full" title="Start a new conversation">
         <Plus className="size-4" /> New question
       </button>
     </div>
@@ -109,6 +117,62 @@ const Sidebar: React.FC<SidebarProps> = ({
         );
       })}
     </nav>
+
+    {/* Recent threads. Titles come from the first question, so they are recognizable
+        without a second naming step the user would never complete. */}
+    {conversations.length > 0 ? (
+      <div className="mt-3 flex min-h-0 flex-1 flex-col px-3">
+        <div className="mb-1.5 flex items-center justify-between px-1">
+          <span className="label">Recent</span>
+          <span className="font-code text-[10px] text-faint">{conversations.length}</span>
+        </div>
+        <div className="scroll-thin -mr-1 flex-1 space-y-px overflow-y-auto pr-1 pb-2" style={{ maxHeight: 240 }}>
+          {conversations.map(c => {
+            const on = view === 'chat' && activeConversationId === c.id;
+            return (
+              <div
+                key={c.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => onOpenConversation(c.id)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onOpenConversation(c.id);
+                  }
+                }}
+                className="group flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-[7px] text-[12.5px] transition-colors"
+                style={{
+                  background: on ? 'var(--color-surface)' : 'transparent',
+                  color: on ? 'var(--color-fg)' : 'var(--color-muted)',
+                }}
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate">{c.title}</span>
+                  <span className="block font-code text-[9.5px] text-faint">
+                    {c.message_count} · {relativeTime(c.updated_at)}
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  onClick={e => {
+                    e.stopPropagation();
+                    onDeleteConversation(c.id);
+                  }}
+                  className="shrink-0 rounded p-0.5 opacity-0 transition group-hover:opacity-100 focus:opacity-100"
+                  style={{ color: 'var(--color-faint)' }}
+                  aria-label={`Delete conversation ${c.title}`}
+                >
+                  <Trash2 className="size-3.5" />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    ) : (
+      <div className="flex-1" />
+    )}
 
     <div className="mt-auto shrink-0 space-y-px p-3" style={{ borderTop: '1px solid var(--color-border)' }}>
       <button

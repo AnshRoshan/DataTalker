@@ -80,15 +80,18 @@ For a public instance where every visitor brings their own model key, set no `LL
 
 ## Using it
 
-1. Open the UI → **Connections** → add a connection (paste a URL like
+1. Open the UI → **Sources** → add a connection (paste a URL like
    `postgresql://user:pass@host/db` or upload a `.db` file) → it runs a preflight check and
-   shows what it found.
-2. Ask questions in the chat. Follow-ups keep context. Answers show the SQL and the rows.
-3. Explore the **Schema** view: tables, columns, and how they connect (foreign keys +
-   inferred joins).
-4. Want a different model? **Settings → Model** lists what your provider serves (an
+   shows what it found. On a first run the bundled fixtures are registered as **Demo** sources.
+2. Ask questions in **Ask**. Follow-ups keep context; threads persist server-side and appear
+   under Recent, so they survive a refresh and follow you to another machine.
+3. **SQL lab** writes statements by hand through the same read-only guard, charts the result,
+   and saves them to the **Library** — which also holds the audit trail of every question asked.
+4. **Pulse** aggregates that audit log: questions, statements blocked, latency percentiles,
+   a 14-day activity chart. **Schema** explores tables and join paths.
+5. Want a different model? **Settings → Model** lists what your provider serves (an
    OpenRouter or OpenAI-compatible key exposes its whole catalog) — the choice is stored
-   server-side and applies to the next question. `RESET` falls back to `LLM_MODEL`.
+   server-side and applies to the next question. **Reset** falls back to `LLM_MODEL`.
 
 ### Configuration (env vars, prefix `DATATALKER_`)
 
@@ -106,6 +109,7 @@ For a public instance where every visitor brings their own model key, set no `LL
 | `DATATALKER_DATA_DIR` | `backend/data` | Connections registry storage |
 | `DATATALKER_AUDIT_LOG_PATH` | `backend/logs/audit.log` | JSONL audit log ("" = off) |
 | `DATATALKER_GOVERNANCE_FILE` | — | JSON: allowed tables + masked columns |
+| `DATATALKER_BOOTSTRAP_DEMO` | `true` | Register the bundled fixtures as demo sources on a first, empty run |
 | `DATATALKER_SEMANTIC_FILE` | — | YAML glossary: descriptions, synonyms, metrics |
 
 LLM (no prefix): `LLM_PROVIDER=gemini|openrouter|openai`, `LLM_MODEL`, `LLM_API_KEY`,
@@ -167,7 +171,7 @@ the audit log.
 ## Development
 
 ```bash
-cd backend && for t in test_*.py; do uv run python "$t"; done   # 20+ assert-based test scripts
+cd backend && for t in test_*.py; do uv run python "$t"; done   # 28 assert-based test scripts
 ```
 
 License: MIT.

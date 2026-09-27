@@ -7,12 +7,14 @@ This version features a clean, modular architecture with separated concerns.
 """
 
 import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
+from core.bootstrap import register_demo_sources
 from core.settings import get_settings
 from core.logging_config import configure_logging, RequestContextMiddleware
 from core.ratelimit import RateLimitMiddleware
@@ -57,6 +59,16 @@ def create_app() -> FastAPI:
     configure_logging()
     settings = get_settings()
 
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        # First run only: register the bundled fixtures so a fresh deployment is
+        # answerable before anyone attaches a database.
+        try:
+            register_demo_sources()
+        except Exception:  # a demo convenience must never block boot
+            logger.warning("demo source registration failed; continuing without it", exc_info=True)
+        yield
+
     # Create FastAPI app
     app = FastAPI(
         title=settings.api_title,
@@ -64,6 +76,7 @@ def create_app() -> FastAPI:
         description=settings.api_description,
         docs_url="/docs",
         redoc_url="/redoc",
+        lifespan=lifespan,
     )
 
     # Add CORS middleware (behavior identical to the pre-settings constants)

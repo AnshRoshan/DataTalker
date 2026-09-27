@@ -5,7 +5,40 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
-    <title>DataTalker</title>
+    <title>DataTalker — ask your database in plain English</title>
+    <meta
+      name="description"
+      content="DataTalker reflects your schema, writes one guarded read-only SELECT, runs it against SQLite, PostgreSQL or MySQL, and answers with the prose, the SQL and the rows."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="DataTalker — ask your database in plain English" />
+    <meta
+      property="og:description"
+      content="Natural language to SQL through a deterministic read-only pipeline. Bring your own model key; nothing is written to your database."
+    />
+    <meta name="theme-color" content="#08080a" />
+    <script>
+      // Set the theme class before the stylesheet resolves, so a light-mode visitor
+      // never sees a dark flash on first paint.
+      try {
+        if (localStorage.getItem('datatalker.theme') === 'light') {
+          document.documentElement.classList.add('light');
+        }
+      } catch {
+        /* private mode: stay on the default */
+      }
+    </script>
+    <script>
+      // Set the theme class before the stylesheet resolves, so a light-mode visitor
+      // never sees a dark flash on first paint.
+      try {
+        if (localStorage.getItem('datatalker.theme') === 'light') {
+          document.documentElement.classList.add('light');
+        }
+      } catch {
+        /* private mode: stay on the default */
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

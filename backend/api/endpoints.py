@@ -6,7 +6,7 @@ import logging
 import time
 from typing import Optional
 
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Depends
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Depends, Request, Response
 from fastapi.responses import JSONResponse
 
 from .dependencies import DatabaseInputHandler, require_api_key
@@ -24,6 +24,8 @@ from .models import (
     LLMModelsResponse,
     LLMModelSelect,
     LLMModelSelection,
+    AuthUser,
+    GoogleCallback,
 )
 from services.schema_service import SchemaService
 from services.query_service import QueryService
@@ -305,6 +307,62 @@ def create_endpoints(app: FastAPI, serve_spa: bool = False) -> None:
             "last_checked_at": (updated or {}).get("last_checked_at"),
             "last_status": status,
         })
+
+    # ------------------------------------------------------------------ auth
+    # Public (no Bearer gate) by design: these are how a visitor becomes someone.
+
+    @app.get("/auth/config")
+    async def auth_config():
+        """What the browser needs to render a sign-in button. Never a secret."""
+        s = get_settings()
+        return {
+            "google_enabled": bool(s.google_client_id),
+            "client_id": s.google_client_id or None,
+            "require_login": s.require_login,
+            "api_key_required": s.require_api_key,
+        }
+
+    @app.post("/auth/google", response_model=AuthUser)
+    async def auth_google(body: GoogleCallback, request: Request, response: Response):
+        """Verify a Google ID token and start a signed session."""
+        from core.auth import (
+            SESSION_COOKIE,
+            SESSION_TTL_SECONDS,
+            create_session_token,
+            safe_user,
+            verify_google_id_token,
+        )
+
+        user = verify_google_id_token(body.credential)
+        payload = safe_user(user)
+        record_audit({"event": "sign_in", "request_id": request_id_var.get(), "email": payload["email"]})
+
+        response.set_cookie(
+            SESSION_COOKIE,
+            create_session_token(user),
+            max_age=SESSION_TTL_SECONDS,
+            httponly=True,
+            samesite="lax",
+            # Proxies terminate TLS, so trust the forwarded scheme; a Secure cookie that
+            # the browser drops because the visible origin is http is the worse failure.
+            secure=(request.headers.get("x-forwarded-proto") or request.url.scheme).startswith("https"),
+            path="/",
+        )
+        return payload
+
+    @app.get("/auth/me")
+    async def auth_me(request: Request):
+        from core.auth import current_user, safe_user
+
+        claims = current_user(request)
+        return {"authenticated": claims is not None, "user": safe_user(claims) if claims else None}
+
+    @app.post("/auth/logout", status_code=204)
+    async def auth_logout(response: Response):
+        from core.auth import SESSION_COOKIE
+
+        response.delete_cookie(SESSION_COOKIE, path="/")
+        return Response(status_code=204)
 
     @app.get("/llm/models", response_model=LLMModelsResponse, dependencies=[Depends(require_api_key)])
     def list_llm_models_endpoint():

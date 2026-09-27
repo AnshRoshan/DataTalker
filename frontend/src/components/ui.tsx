@@ -1,6 +1,30 @@
 import React from 'react';
+import { navigate } from '../lib/router';
 
 /* Small shared primitives so every view reads from the same visual language. */
+
+/** Anchor that routes in-app and degrades to a normal link on middle-click/new tab. */
+export const Link: React.FC<{
+  to: string;
+  className?: string;
+  style?: React.CSSProperties;
+  children: React.ReactNode;
+  onClick?: () => void;
+}> = ({ to, className = '', style, children, onClick }) => (
+  <a
+    href={to}
+    className={className}
+    style={style}
+    onClick={event => {
+      if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+      event.preventDefault();
+      onClick?.();
+      navigate(to);
+    }}
+  >
+    {children}
+  </a>
+);
 
 export const StatusDot: React.FC<{
   tone: 'ok' | 'error' | 'unknown';
@@ -56,17 +80,23 @@ export const Field: React.FC<{
 );
 
 export const inputClass =
-  'w-full rounded-input border border-border-strong bg-bg/60 px-3 py-2 text-[13px] text-fg placeholder:text-faint transition-tool hover:border-border-strong focus:border-accent';
+  'field';
 
 export const buttonPrimary =
-  'inline-flex items-center justify-center gap-1.5 rounded-button bg-accent px-3.5 py-2 text-[13px] font-medium text-[#053B26] transition-tool hover:bg-accent-strong shadow-tinted-sm disabled:cursor-not-allowed disabled:opacity-40';
+  'btn btn-primary shadow-tinted-sm';
 
-export const buttonGhost =
-  'inline-flex items-center justify-center gap-1.5 rounded-button border border-border-strong bg-surface/60 px-3.5 py-2 text-[13px] text-fg/80 transition-tool hover:border-accent/50 hover:bg-surface-hi hover:text-fg disabled:cursor-not-allowed disabled:opacity-40';
+export const buttonGhost = 'btn btn-secondary';
+
+export const buttonDanger = 'btn btn-danger';
 
 export const iconButton =
-  'inline-flex h-8 w-8 items-center justify-center rounded-button text-muted transition-tool hover:bg-surface-hi hover:text-fg disabled:cursor-not-allowed disabled:opacity-40';
+  'inline-flex h-8 w-8 items-center justify-center rounded-button text-muted transition-tool hover:bg-surface hover:text-fg disabled:cursor-not-allowed disabled:opacity-40';
 
 /** Elevated panel: the workhorse surface of the workspace. */
-export const panel =
-  'rounded-card border border-border bg-primary shadow-tinted';
+export const panel = 'panel';
+
+/** Micro uppercase label used for section headers everywhere. */
+export const MicroLabel: React.FC<{ children: React.ReactNode; className?: string }> = ({
+  children,
+  className = '',
+}) => <span className={`label ${className}`}>{children}</span>;

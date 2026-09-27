@@ -7,8 +7,10 @@ from api.dependencies import require_api_key
 
 
 def status(auth):
+    # request is only consulted when DATATALKER_REQUIRE_LOGIN is on (see
+    # test_auth_login.py); the shared-key path never touches it.
     try:
-        require_api_key(auth)
+        require_api_key(request=None, authorization=auth)
         return 200
     except HTTPException as e:
         return e.status_code

@@ -96,6 +96,9 @@ For a public instance where every visitor brings their own model key, set no `LL
 |---|---|---|
 | `DATATALKER_API_KEY` | — (required) | Shared secret clients send as `Authorization: Bearer` |
 | `DATATALKER_REQUIRE_API_KEY` | `true` | Set `false` to open the data routes on a public bring-your-own-key instance — anyone who finds the URL can then query it |
+| `DATATALKER_GOOGLE_CLIENT_ID` | — (off) | Google OAuth **Web client** ID. Enables the Sign in with Google button; the browser posts the ID token to `/auth/google` |
+| `DATATALKER_REQUIRE_LOGIN` | `false` | Require a signed-in Google identity on data routes; the session cookie becomes the credential |
+| `DATATALKER_SESSION_SECRET` | falls back to the API key | HMAC key for the signed session cookie — set a stable value so sign-ins survive a restart |
 | `DATATALKER_DB_DIR` | `backend/` | Where server-path SQLite files must live |
 | `DATATALKER_MAX_QUERY_ROWS` | `500` | Hard server-side row cap |
 | `DATATALKER_RATE_LIMIT_REQUESTS` | `30` / `60s` | Per-IP rate limit (0 = off) |
@@ -121,6 +124,29 @@ uv sync --extra mssql      # pyodbc  -> SQL Server (mssql://…)
 uv sync --extra oracle     # oracledb
 uv sync --extra snowflake  # snowflake-sqlalchemy
 ```
+
+### Sign in with Google
+
+The app ships three surfaces: `/` (public landing page), `/login`, and `/studio`
+(the workspace). To enable Google sign-in, create an **OAuth client ID** of type
+*Web application* in the Google Cloud console and add your site to **Authorized
+JavaScript origins** — `http://localhost:8000` for development and
+`https://your-app.example.com` in production. No redirect URI is needed: this uses
+Google Identity Services' credential flow, which hands the browser an ID token.
+
+Then point the server at the same client id:
+
+```bash
+DATATALKER_GOOGLE_CLIENT_ID=1234567890-abc.apps.googleusercontent.com
+DATATALKER_SESSION_SECRET=<python -c "import secrets;print(secrets.token_urlsafe(32))">
+DATATALKER_REQUIRE_LOGIN=true        # optional: gate the data routes on a session
+```
+
+The server verifies the token against Google's published keys, then issues its own
+`HttpOnly` session cookie. There is no user table — identity lives in the signed
+payload, so the deployment stays a single container with no database. `require_login`
+restricts *who may use* an instance; it does not partition data between users (see
+Security model below).
 
 ## Security model (read before exposing it)
 

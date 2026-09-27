@@ -11,7 +11,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 from core.settings import get_settings
 from core.logging_config import configure_logging, RequestContextMiddleware
@@ -21,15 +21,32 @@ from api.endpoints import create_endpoints
 logger = logging.getLogger(__name__)
 
 # Built frontend (frontend/dist). When present, the API serves the SPA itself so the
-# Docker image is a complete one-container app. A catch-all StaticFiles mount is added
-# AFTER the API routes, so every /chat /schema /connections route still wins, and any
-# other path (/, /favicon.svg, /assets/*) serves from dist with index.html fallback.
+# Docker image is a complete one-container app. The mount is added AFTER the API routes,
+# so every /chat /schema /connections /auth route still wins.
+
+
 def _mount_spa(app: FastAPI) -> bool:
+    """Serve the built SPA, handing client-side routes to its shell.
+
+    StaticFiles 404s an unknown path, which breaks a refresh or a shared link on
+    /login. Registered after every API route, so the API always wins; real files are
+    resolved against dist with a containment check, because full_path is user input and
+    must not be able to walk out of the directory we chose to publish.
+    """
     dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"
     index = dist / "index.html"
     if not index.is_file():
         return False
-    app.mount("/", StaticFiles(directory=dist, html=True), name="spa")
+
+    root = dist.resolve()
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa_shell(full_path: str) -> FileResponse:
+        candidate = (root / full_path).resolve() if full_path else index
+        if full_path and candidate.is_file() and candidate.is_relative_to(root):
+            return FileResponse(candidate)
+        return FileResponse(index)
+
     logger.info("serving frontend SPA from %s", dist)
     return True
 

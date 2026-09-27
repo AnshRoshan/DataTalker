@@ -4,12 +4,15 @@
 import os
 import secrets
 from typing import Tuple, Optional
-from fastapi import Form, File, UploadFile, HTTPException, Header
+from fastapi import Form, File, UploadFile, HTTPException, Header, Request
 
 from core.database import parse_connection_string, is_database_connection_url, validate_database_path
 from core.file_handler import save_uploaded_file, download_database_from_url
 
-def require_api_key(authorization: Optional[str] = Header(None)) -> None:
+def require_api_key(
+    request: Request,
+    authorization: Optional[str] = Header(None),
+) -> None:
     """Gate data routes on a shared API key. Deny by default if none is configured.
 
     ponytail: a single env-configured key (matches the Bearer token the frontend already
@@ -21,7 +24,18 @@ def require_api_key(authorization: Optional[str] = Header(None)) -> None:
     """
     from core.settings import get_settings
 
-    if not get_settings().require_api_key:
+    settings = get_settings()
+
+    if settings.require_login:
+        # A session cookie is the credential; the shared key becomes optional. Without
+        # this check DATATALKER_REQUIRE_LOGIN would be a UI-only promise.
+        from core.auth import current_user
+
+        if request is None or current_user(request) is None:
+            raise HTTPException(status_code=401, detail="Sign in required.")
+        return
+
+    if not settings.require_api_key:
         return
     expected = os.getenv("DATATALKER_API_KEY")
     if not expected:

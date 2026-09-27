@@ -7,3 +7,6 @@
 
 # Runtime logs
 backend/logs/
+
+# Reference project dropped in for design study — not part of this app.
+IDEA/

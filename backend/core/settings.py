@@ -32,6 +32,16 @@ class Settings(BaseSettings):
     # bring-your-own-key demo where the operator accepts anyone can query it.
     require_api_key: bool = True
 
+    # --- Google sign-in (core/auth.py) ---------------------------------------
+    # Client ID from the Google Cloud console; the browser loads the GSI script with
+    # it and posts the resulting ID token to /auth/google. Empty = sign-in disabled.
+    google_client_id: str = ""
+    # Require a signed-in Google identity on data routes. When true, the shared API key
+    # above becomes optional — a session cookie is the credential instead.
+    require_login: bool = False
+    # Key for the signed session cookie. Falls back to DATATALKER_API_KEY if unset.
+    session_secret: str = ""
+
     # CORS — explicit origins (no wildcard-with-credentials). Comma-separated.
     cors_origins: str = Field(
         default="http://localhost:5173,http://127.0.0.1:5173",

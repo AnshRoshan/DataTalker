@@ -25,7 +25,7 @@ full pipeline is verified end-to-end against the bundled fixtures.
 backend/
   main.py                 LIVE entry — uvicorn main:fastapi_app on :8000; CORS + rate-limit middleware
   api/
-    endpoints.py          /chat/ /schema/ /schema/cache (GET+DELETE) / /  /health
+    endpoints.py          /chat/ /schema/ /schema/graph/ /connections/ /llm/ /auth/ / /health
     dependencies.py       resolves db_file / db_path / db_url / db_connection_string; require_api_key
     models.py             Pydantic response models (handlers return JSONResponse; shapes match)
   services/
@@ -64,10 +64,12 @@ backend/
   test_*.py               23 assert-based test scripts run directly (`uv run python test_x.py`)
 
 frontend/                 React 19 + Vite 6 + Tailwind 4, package manager = bun
-  src/App.tsx             single sendQuestion() flow; history, abort/timeout, persistence
-  src/components/         ChatArea, ChatMessage (pagination + CSV in ResultsTable), Sidebar
-                          (real file upload), Header (live health badge), Settings, ...
-  src/lib/                storage.ts (localStorage), csv.ts (RFC-4180 export)
+  src/App.tsx             the router: `/` landing, `/login`, `/studio` workspace
+  src/components/         Landing, LoginPage, Workspace (sendQuestion flow), Sidebar,
+                          TopBar, ChatView/Composer/MessageCard, ResultsTable
+                          (pagination + CSV), ConnectionsView, SchemaView, SettingsModal
+  src/lib/                api.ts, storage.ts (localStorage incl. theme + BYOK key),
+                          auth.ts (Google Identity Services), theme.ts, router.ts, csv.ts
   src/types.ts            response types (incl. results_truncated / latency_ms / row_cap)
 ```
 
@@ -85,6 +87,11 @@ frontend/                 React 19 + Vite 6 + Tailwind 4, package manager = bun
   saved-connection registry; full connection strings NEVER leave the server (masked URIs
   only). Creating a connection runs the preflight; failures are rejected with the
   structured error.
+- `GET /auth/config`, `POST /auth/google` `{credential}`, `GET /auth/me`,
+  `POST /auth/logout` — Google sign-in (core/auth.py). The ID token is verified against
+  Google's keys server-side; the session is a self-signed HMAC cookie, so there is **no
+  user table** and the container stays stateless. `DATATALKER_REQUIRE_LOGIN=true` makes
+  that cookie the credential on data routes; it gates access, it does not partition data.
 - `GET /llm/models`, `POST /llm/model` `{model}`, `DELETE /llm/model` — which models the
   configured provider serves and which one is picked. The provider (base URL + key) stays
   operator config from `.env`; only the model id changes, persisted to

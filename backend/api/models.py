@@ -68,6 +68,18 @@ class ClearCacheResponse(BaseModel):
     cleared_count: int
 
 
+class GoogleCallback(BaseModel):
+    """Request body for POST /auth/google — the credential GSI handed the browser."""
+    credential: str = Field(..., description="Google ID token, verified server-side")
+
+
+class AuthUser(BaseModel):
+    """Response model for a successful sign-in."""
+    email: str
+    name: str
+    picture: str = ""
+
+
 class HealthResponse(BaseModel):
     """Response model for health check."""
     status: str

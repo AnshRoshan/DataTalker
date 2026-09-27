@@ -9,6 +9,7 @@ dependencies = [
     "cachetools>=5.5.2",
     "faker>=37.3.0",
     "fastapi>=0.115.12",
+    "google-auth>=2.58.1",
     "langgraph>=0.4.7",
     "pandas>=2.2.3",
     "psycopg2-binary>=2.9.10",
